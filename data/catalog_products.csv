@@ -1,7 +1,8 @@
 series,canonical_work_slug,display_title,edition_format,asin,isbn_10,isbn_13,other_id
 standalone,beneath_the_loch,Beneath the Loch,ebook,B07DZ8CQ9D,,978-1732461109,
+standalone,beneath_the_loch,Beneath the Loch,audiobook,,,978-1-952349-32-4,BK_ACX0_245162
 standalone,carmilla_and_laura,Carmilla and Laura,ebook,B07K2K998H,,978-1-7324611-7-8,
-standalone,carmilla_and_laura,Carmilla and Laura,audiobook,B092XPMHT7,,978-1-952349-29-4,
+standalone,carmilla_and_laura,Carmilla and Laura,audiobook,B092XPMHT7,,978-1-952349-29-4,BK_ACX0_251571
 standalone,carmilla_and_laura,Carmilla and Laura,hardcover,,1952349176,978-1-952349-17-1,
 standalone,carmilla_and_laura,Carmilla and Laura,paperback,,1732461147,978-1-7324611-4-7,
 standalone,carmilla_and_laura,Carmilla and Laura,special edition paperback,,,,
@@ -37,7 +38,7 @@ sea_and_stars,deaths_abyss,Death’s Abyss,audiobook,B08X4TTCLR,,978-1-952349-07-2
 sea_and_stars,deaths_abyss,Death’s Abyss,paperback,,1952349036,978-1-952349-03-4,
 sea_and_stars,deaths_abyss,Death’s Abyss,hardcover,,1952349168,978-1-952349-16-4 ,
 sea_and_stars,beneath_the_dark_moon,Beneath the Dark Moon,ebook,B086PMGQ48,,978-1-952349-99-7,
-sea_and_stars,beneath_the_dark_moon,Beneath the Dark Moon,audiobook,B09NXKWBW7,,978-1-952349-30-0,
+sea_and_stars,beneath_the_dark_moon,Beneath the Dark Moon,audiobook,B09NXKWBW7,,978-1-952349-30-0,BK_ACX0_291129
 steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,ebook,B0H2PC3QSC,,978-1-952349-27-0,
 steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,audiobook,,,978-1-952349-28-7,
 steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,paperback,,,978-1-952349-25-6,

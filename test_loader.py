@@ -21,33 +21,29 @@ print("=" * 50)
 catalog = BookCatalog(DATA_DIR / 'catalog_products.csv')
 catalog.load()
 
-# Check if ACX file exists
-if not ACX_FILE.exists():
-    print(f"\n[ERROR] ACX file not found at: {ACX_FILE}")
-    print("[INFO] Make sure you've copied your ACX .xlsx into data/raw/acx-new/")
-    print("[INFO] Current data directory contents:")
-    for item in DATA_DIR.rglob('*'):
-        if item.is_file():
-            print(f"  {item.relative_to(DATA_DIR)}")
-else:
-    # Run the loader
-    print(f"\nLoading: {ACX_FILE.name}")
-    df = load_acx_report(ACX_FILE, catalog=catalog)
-    
-    # Show results
-    print(f"\n{'=' * 50}")
-    print(f"RESULTS: {len(df)} rows loaded")
-    print(f"{'=' * 50}")
-    print(f"\nColumns: {list(df.columns)}")
-    print(f"\nFirst 3 rows (key columns):")
-    display_cols = ['book_identifier', 'book_title', 'region', 'quantity', 
-                    'royalty_amount', 'sale_date', 'source_platform']
-    available = [c for c in display_cols if c in df.columns]
-    print(df[available].head(3).to_string())
-    
-    print(f"\nCatalog enrichment check:")
-    if 'canonical_work_slug' in df.columns:
-        matched = df['canonical_work_slug'].notna().sum()
-        print(f"  Matched to catalog: {matched}/{len(df)}")
-    
-    print(f"\n✅ Test complete!")
+# Import the batch processor
+from src.loaders import load_all_acx_reports
+
+# Set the folder path (not single file)
+ACX_FOLDER = DATA_DIR / 'raw' / 'acx-new'
+
+# Run batch processing
+df = load_all_acx_reports(ACX_FOLDER, catalog=catalog)
+
+# Show results
+print(f"\n{'=' * 50}")
+print(f"RESULTS: {len(df)} total rows loaded")
+print(f"{'=' * 50}")
+
+# Show monthly breakdown
+print(f"\nMonthly breakdown:")
+monthly = df.groupby(df['sale_date'].dt.to_period('M')).agg({
+    'quantity': 'sum',
+    'royalty_amount': 'sum'
+}).round(2)
+print(monthly.to_string())
+
+# Show catalog match rate
+matched = df['series'].notna().sum()
+print(f"\nCatalog enrichment: {matched}/{len(df)} rows matched")
+print(f"\n✅ Batch test complete!")

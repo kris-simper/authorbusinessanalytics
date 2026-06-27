@@ -33,13 +33,93 @@ def extract_date_from_acx_filename(filename):
         raise ValueError(f"Cannot parse date from filename: {filename}")
 
 
+def _match_titles_to_catalog(df, catalog, threshold=0.8):
+    """
+    Match catalog entries based on book title similarity (fallback when IDs unavailable).
+    
+    Args:
+        df: Sales DataFrame
+        catalog: BookCatalog instance
+        threshold: Min similarity ratio (0-1) for fuzzy matching
+    
+    Returns:
+        DataFrame enriched with catalog info where matches found
+    """
+    if catalog.raw_catalog is None:
+        df['series'] = None
+        df['canonical_work_slug'] = None
+        df['edition_format'] = None
+        return df
+    
+    from difflib import SequenceMatcher
+    
+    def find_best_match(title, candidates):
+        """Find closest match from candidate titles."""
+        if pd.isna(title) or not isinstance(title, str):
+            return None, 0
+        
+        title_lower = title.lower().strip()
+        # Clean common subtitle patterns
+        title_clean = re.sub(r'\s*:\s*.*$', '', title_lower)  # Remove : everything after
+        title_clean = re.sub(r'\s*\([^)]*\)', '', title_clean)  # Remove (Unabridged) etc.
+        title_clean = title_clean.replace('&', 'and').strip()  # Normalize & vs and
+        
+        best_score = 0
+        best_match = None
+        
+        for idx, candidate in enumerate(candidates):
+            if pd.isna(candidate) or not isinstance(candidate, str):
+                continue
+            
+            cand_lower = candidate.lower().strip()
+            cand_clean = re.sub(r'\s*:\s*.*$', '', cand_lower)
+            cand_clean = re.sub(r'\s*\([^)]*\)', '', cand_clean)
+            cand_clean = cand_lower.replace('&', 'and').strip()
+            
+            score = SequenceMatcher(None, title_clean, cand_clean).ratio()
+            
+            if score > best_score:
+                best_score = score
+                best_match = idx
+        
+        if best_score >= threshold:
+            return best_match, best_score
+        return None, best_score
+    
+    # Get all display titles from catalog
+    catalog_titles = catalog.raw_catalog['display_title'].tolist()
+    catalog_info = catalog.raw_catalog[['series', 'canonical_work_slug', 'edition_format']]
+    
+    df = df.copy()
+    df['_match_result'] = df['book_title'].apply(lambda t: find_best_match(t, catalog_titles))
+    
+    # Apply matches
+    def apply_single_match(row):
+        idx, score = row['_match_result']
+        if idx is not None:
+            return pd.Series([
+                catalog_info.loc[idx, 'series'],
+                catalog_info.loc[idx, 'canonical_work_slug'],
+                catalog_info.loc[idx, 'edition_format']
+            ])
+        return pd.Series([None, None, None])
+    
+    matched_cols = df.apply(apply_single_match, axis=1)
+    df[['series', 'canonical_work_slug', 'edition_format']] = matched_cols
+    
+    # Cleanup temp column
+    df = df.drop(columns=['_match_result'])
+    
+    return df
+
+
 def load_acx_report(filepath, catalog=None):
     """
     Load a single ACX monthly royalty report (new format, post-April 2024).
     
-    Note: ACX reports use internal product IDs (BK_ACX0_...) that don't appear 
-    in standard book catalogs. When catalog enrichment fails by ID, falls back 
-    to title-based matching.
+    Uses a hybrid matching strategy:
+    1. First attempts exact ID match against catalog 'other_id' field
+    2. Falls back to fuzzy title matching for any unmatched rows
     
     Args:
         filepath: Path to the .xlsx file
@@ -85,11 +165,7 @@ def load_acx_report(filepath, catalog=None):
     df['sale_date'] = report_date
     
     # Step 5: Apply schema normalization (rename columns)
-    # ACX specifically doesn't have marketplace → region mapping, so skip that
-    acx_specific_mapping = {k: v for k, v in ACX_NEW_FORMAT.items() if k != 'Marketplace'}
-    if 'Region' not in df.columns and 'region' not in df.columns and 'Marketplace' in df.columns:
-        acx_specific_mapping['Marketplace'] = 'region'  # ACX calls it Region/Marketplace interchangeably
-    df = df.rename(columns=acx_specific_mapping)
+    df = df.rename(columns=ACX_NEW_FORMAT)
     
     # Step 6: Drop PII columns
     for col in DROP_COLUMNS_COMMON:
@@ -103,32 +179,45 @@ def load_acx_report(filepath, catalog=None):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    # Step 8: Enrich with catalog data
-    if catalog is not None:
-        # First try ID-based matching (will likely return 0 matches for ACX)
-        if 'book_identifier' in df.columns:
-            df_temp = catalog.enrich(df, 'book_identifier', id_type_hint='asin')
-            matched_by_id = df_temp['series'].notna().sum()
+    # Step 8: Enrich with catalog data using hybrid strategy
+    if catalog is not None and 'book_identifier' in df.columns:
+        # Stage 1: Try exact ID match first
+        print("[INFO] Stage 1: Attempting exact ID match against catalog...")
+        df_enriched = catalog.enrich(df, 'book_identifier')
+        
+        matched_count = df_enriched['series'].notna().sum()
+        unmatched_count = len(df_enriched) - matched_count
+        
+        if unmatched_count > 0:
+            # Stage 2: Fuzzy title match only the unmatched rows
+            print(f"[INFO] Stage 1 matched {matched_count}/{len(df_enriched)} rows")
+            print(f"[INFO] Stage 2: Falling back to title matching for {unmatched_count} unmatched rows...")
             
-            if matched_by_id == 0:
-                # Fallback to title-based matching
-                print("[INFO] No matches by ID (ACX internal IDs). Falling back to title matching...")
-                df = _match_titles_to_catalog(df, catalog)
-                matched_method = "title"
-            else:
-                df = df_temp
-                matched_method = "id"
+            unmatched_mask = df_enriched['series'].isna()
+            unmatched_rows = df_enriched[unmatched_mask].copy()
+            
+            # Drop partial enrichment columns before re-matching
+            for col in ['series', 'canonical_work_slug', 'edition_format']:
+                if col in unmatched_rows.columns:
+                    unmatched_rows = unmatched_rows.drop(columns=[col])
+            
+            title_matched = _match_titles_to_catalog(unmatched_rows, catalog)
+            
+            # Combine matched + title-matched rows
+            matched_rows = df_enriched[~unmatched_mask]
+            df_enriched = pd.concat([matched_rows, title_matched], ignore_index=True)
+            
+            final_matched = df_enriched['series'].notna().sum()
+            print(f"[INFO] Hybrid enrichment complete: {final_matched}/{len(df_enriched)} rows matched")
         else:
-            df = _match_titles_to_catalog(df, catalog)
-            matched_method = "title"
+            print(f"[INFO] Exact ID match succeeded for all {matched_count} rows — no fallback needed")
     else:
-        df['series'] = None
-        df['canonical_work_slug'] = None
-        df['edition_format'] = None
+        df_enriched = df.copy()
+        df_enriched['series'] = None
+        df_enriched['canonical_work_slug'] = None
+        df_enriched['edition_format'] = None
     
-    matched = df['series'].notna().sum()
-    total = len(df)
-    print(f"[INFO] Catalog enrichment ({matched_method}-matching): {matched}/{total} rows matched")
+    df = df_enriched
     
     # Step 9: Add source tracking column
     df['source_platform'] = 'acx'
@@ -137,81 +226,50 @@ def load_acx_report(filepath, catalog=None):
     return df
 
 
-def _match_titles_to_catalog(df, catalog, threshold=0.8):
+def load_all_acx_reports(folder_path, catalog=None):
     """
-    Match catalog entries based on book title similarity (fallback when IDs unavailable).
+    Batch process all ACX Excel files in a given folder.
     
     Args:
-        df: Sales DataFrame
-        catalog: BookCatalog instance
-        threshold: Min similarity ratio (0-1) for fuzzy matching
+        folder_path: Path to folder containing ACX .xlsx files
+        catalog: BookCatalog instance for enrichment
     
     Returns:
-        DataFrame enriched with catalog info where matches found
+        Single combined DataFrame with all months concatenated
     """
-    if catalog.raw_catalog is None:
-        df['series'] = None
-        df['canonical_work_slug'] = None
-        df['edition_format'] = None
-        return df
+    folder_path = Path(folder_path)
     
-    from difflib import SequenceMatcher
+    # Find all .xlsx files in the folder
+    acx_files = list(folder_path.glob('*.xlsx'))
     
-    def find_best_match(title, candidates):
-        """Find closest match from candidate titles."""
-        if pd.isna(title) or not isinstance(title, str):
-            return None, 0
-        
-        title_lower = title.lower().strip()
-        # Clean common subtitle patterns and parenthetical content
-        title_clean = re.sub(r'\s*:\s*.*$', '', title_lower)  # Remove : everything after
-        title_clean = re.sub(r'\s*\([^)]*\)', '', title_clean)  # Remove (Unabridged) etc.
-        title_clean = title_clean.replace('&', 'and').strip()  # Normalize & vs and
-        
-        best_score = 0
-        best_match = None
-        
-        for idx, candidate in enumerate(candidates):
-            if pd.isna(candidate) or not isinstance(candidate, str):
-                continue
-            
-            cand_lower = candidate.lower().strip()
-            cand_clean = re.sub(r'\s*:\s*.*$', '', cand_lower)
-            cand_clean = re.sub(r'\s*\([^)]*\)', '', cand_clean)
-            cand_clean = cand_clean.replace('&', 'and').strip()
-            
-            score = SequenceMatcher(None, title_clean, cand_clean).ratio()
-            
-            if score > best_score:
-                best_score = score
-                best_match = idx
-        
-        if best_score >= threshold:
-            return best_match, best_score
-        return None, best_score
+    if not acx_files:
+        print(f"[WARN] No .xlsx files found in {folder_path}")
+        return pd.DataFrame()
     
-    # Get all display titles from catalog
-    catalog_titles = catalog.raw_catalog['display_title'].tolist()
-    catalog_info = catalog.raw_catalog[['series', 'canonical_work_slug', 'edition_format']]
+    print(f"\n{'=' * 60}")
+    print(f"BATCH PROCESSING: Found {len(acx_files)} ACX files")
+    print(f"{'=' * 60}")
     
-    df = df.copy()
-    df['_match_result'] = df['book_title'].apply(lambda t: find_best_match(t, catalog_titles))
+    all_dataframes = []
     
-    # Apply matches
-    def apply_single_match(row):
-        idx, score = row['_match_result']
-        if idx is not None:
-            return pd.Series([
-                catalog_info.loc[idx, 'series'],
-                catalog_info.loc[idx, 'canonical_work_slug'],
-                catalog_info.loc[idx, 'edition_format']
-            ])
-        return pd.Series([None, None, None])
+    for file_path in sorted(acx_files):
+        try:
+            df = load_acx_report(file_path, catalog=catalog)
+            all_dataframes.append(df)
+            print(f"  ✓ Processed: {file_path.name} ({len(df)} rows)")
+        except Exception as e:
+            print(f"  ✗ FAILED: {file_path.name} — {e}")
     
-    matched_cols = df.apply(apply_single_match, axis=1)
-    df[['series', 'canonical_work_slug', 'edition_format']] = matched_cols
+    if not all_dataframes:
+        print("[ERROR] No files processed successfully")
+        return pd.DataFrame()
     
-    # Cleanup temp column
-    df = df.drop(columns=['_match_result'])
+    # Combine all months into one DataFrame
+    combined = pd.concat(all_dataframes, ignore_index=True)
     
-    return df
+    print(f"\n{'=' * 60}")
+    print(f"BATCH COMPLETE: {len(combined)} total rows from {len(all_dataframes)} files")
+    print(f"Date range: {combined['sale_date'].min().strftime('%B %Y')} to {combined['sale_date'].max().strftime('%B %Y')}")
+    print(f"{'=' * 60}")
+    
+    return combined

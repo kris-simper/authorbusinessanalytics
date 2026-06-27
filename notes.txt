@@ -1,0 +1,7 @@
+DOCUMENT THIS IN YOUR README
+
+When we write the README, we'll include a "Data Sources" section showing all twelve platforms listed, with the first four marked as "Currently Implemented" and the rest as "Roadmap." This actually strengthens your portfolio because it demonstrates:
+
+    Scope awareness — you know what's realistic
+    Prioritization skills — you chose the highest-value sources first
+    Architecture vision — you designed for extensibility from day one
