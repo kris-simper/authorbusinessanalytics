@@ -41,9 +41,12 @@ def init_database(db_path=None):
             series TEXT,
             edition_format TEXT,
             region TEXT,
+            currency TEXT DEFAULT 'USD',
             quantity INTEGER DEFAULT 0,
             price REAL DEFAULT 0.0,
+            price_usd REAL DEFAULT 0.0,
             royalty_amount REAL DEFAULT 0.0,
+            royalty_amount_usd REAL DEFAULT 0.0,
             royalty_rate REAL,
             FOREIGN KEY (book_identifier) REFERENCES dim_books(book_identifier),
             FOREIGN KEY (canonical_work_slug) REFERENCES dim_books(canonical_work_slug)
@@ -108,7 +111,7 @@ def get_monthly_summary_query(conn):
             strftime('%Y-%m', sale_date) AS period,
             source_platform,
             SUM(quantity) AS total_units,
-            ROUND(SUM(royalty_amount), 2) AS total_revenue,
+            ROUND(SUM(royalty_amount_usd), 2) AS total_revenue,
             COUNT(*) AS transaction_count
         FROM sales_fact
         GROUP BY strftime('%Y-%m', sale_date), source_platform
@@ -136,7 +139,7 @@ def get_series_performance_query(conn):
             series,
             COUNT(DISTINCT canonical_work_slug) AS unique_works,
             SUM(quantity) AS total_units_sold,
-            ROUND(SUM(royalty_amount), 2) AS total_royalties,
+            ROUND(SUM(royalty_amount_usd), 2) AS total_royalties,
             ROUND(AVG(royalty_rate * 100), 1) AS avg_royalty_percent
         FROM sales_fact
         WHERE series IS NOT NULL AND series != ''

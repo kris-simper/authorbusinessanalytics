@@ -379,3 +379,140 @@ def load_all_acx_legacy_reports(folder_path, catalog=None):
     print(f"{'=' * 60}")
 
     return combined
+
+
+def load_kdp_report(filepath, catalog=None):
+    """
+    Load a single Amazon KDP royalty report.
+    
+    Uses the 'Combined Sales' sheet which contains all formats (eBook, Paperback, etc.)
+    in a flat tabular structure.
+    
+    Args:
+        filepath: Path to the .xlsx file
+        catalog: BookCatalog instance for identifier enrichment (optional)
+    
+    Returns:
+        Normalized DataFrame with standardized column names and catalog info
+    """
+    from src.schemas import KDP_COMBINED_FORMAT, KDP_MARKETPLACE_MAP
+    
+    filepath = Path(filepath)
+    print(f"[INFO] Loading KDP report from {filepath.name}")
+    
+    df = pd.read_excel(filepath, sheet_name='Combined Sales', engine='openpyxl')
+    print(f"[INFO] Read {len(df)} rows from 'Combined Sales'")
+    
+    # Step 1: Apply schema normalization
+    df = df.rename(columns=KDP_COMBINED_FORMAT)
+    
+    # Step 2: Drop PII columns
+    for col in DROP_COLUMNS_COMMON:
+        if col in df.columns:
+            df = df.drop(columns=[col])
+            print(f"[INFO] Dropped PII column: '{col}'")
+    
+    # Step 3: Transform marketplace domains to region codes
+    df['region'] = df['marketplace_raw'].map(KDP_MARKETPLACE_MAP)
+    df = df.drop(columns=['marketplace_raw'])
+    
+    # Step 4: Parse royalty type percentage (e.g. "35%" → 0.35)
+    df['royalty_rate'] = df['royalty_type_raw'].astype(str).str.replace('%', '').astype(float) / 100
+    df = df.drop(columns=['royalty_type_raw'])
+    
+    # Step 5: Parse sale_date from "YYYY-MM" string to datetime
+    df['sale_date'] = pd.to_datetime(df['sale_date'], format='%Y-%m')
+    
+    # Step 6: Type conversion for numeric columns
+    numeric_cols = ['quantity', 'price', 'royalty_amount']
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Step 7: Enrich with catalog using hybrid strategy
+    if catalog is not None and 'book_identifier' in df.columns:
+        print("[INFO] Stage 1: Attempting exact ID match against catalog...")
+        df_enriched = catalog.enrich(df, 'book_identifier')
+        
+        matched_count = df_enriched['series'].notna().sum()
+        unmatched_count = len(df_enriched) - matched_count
+        
+        if unmatched_count > 0:
+            print(f"[INFO] Stage 1 matched {matched_count}/{len(df_enriched)} rows")
+            print(f"[INFO] Stage 2: Falling back to title matching for {unmatched_count} unmatched rows...")
+            
+            unmatched_mask = df_enriched['series'].isna()
+            unmatched_rows = df_enriched[unmatched_mask].copy()
+            
+            for col in ['series', 'canonical_work_slug', 'edition_format']:
+                if col in unmatched_rows.columns:
+                    unmatched_rows = unmatched_rows.drop(columns=[col])
+            
+            title_matched = _match_titles_to_catalog(unmatched_rows, catalog)
+            
+            matched_rows = df_enriched[~unmatched_mask]
+            df_enriched = pd.concat([matched_rows, title_matched], ignore_index=True)
+            
+            final_matched = df_enriched['series'].notna().sum()
+            print(f"[INFO] Hybrid enrichment complete: {final_matched}/{len(df_enriched)} rows matched")
+        else:
+            print(f"[INFO] Exact ID match succeeded for all {matched_count} rows")
+    else:
+        df_enriched = df.copy()
+        df_enriched['series'] = None
+        df_enriched['canonical_work_slug'] = None
+        df_enriched['edition_format'] = None
+    
+    df = df_enriched
+    
+    # Step 8: Add source tracking
+    df['source_platform'] = 'amazon_kdp'
+    
+    print(f"[INFO] KDP load complete: {len(df)} normalized records")
+    return df
+
+
+def load_all_kdp_reports(folder_path, catalog=None):
+    """
+    Batch process all Amazon KDP Excel files in a given folder.
+    
+    Args:
+        folder_path: Path to folder containing KDP .xlsx files
+        catalog: BookCatalog instance for enrichment
+    
+    Returns:
+        Single combined DataFrame with all files concatenated
+    """
+    folder_path = Path(folder_path)
+    
+    kdp_files = list(folder_path.glob('*.xlsx'))
+    
+    if not kdp_files:
+        print(f"[WARN] No .xlsx files found in {folder_path}")
+        return pd.DataFrame()
+    
+    print(f"\n{'=' * 60}")
+    print(f"BATCH PROCESSING (KDP): Found {len(kdp_files)} files")
+    print(f"{'=' * 60}")
+    
+    all_dataframes = []
+    
+    for file_path in sorted(kdp_files):
+        try:
+            df = load_kdp_report(file_path, catalog=catalog)
+            all_dataframes.append(df)
+            print(f"  OK: {file_path.name} ({len(df)} rows)")
+        except Exception as e:
+            print(f"  FAILED: {file_path.name} - {e}")
+    
+    if not all_dataframes:
+        print("[ERROR] No files processed successfully")
+        return pd.DataFrame()
+    
+    combined = pd.concat(all_dataframes, ignore_index=True)
+    
+    print(f"\n{'=' * 60}")
+    print(f"BATCH COMPLETE: {len(combined)} total rows from {len(all_dataframes)} files")
+    print(f"{'=' * 60}")
+    
+    return combined

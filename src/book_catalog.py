@@ -25,14 +25,12 @@ class BookCatalog:
             print("[WARN] Skipping catalog enrichment. Data will use raw IDs.")
             return False
             
-        # Try UTF-8 first, fall back to Windows encoding if needed
         try:
-            self.raw_catalog = pd.read_csv(self.catalog_path, encoding='utf-8')
+            self.raw_catalog = pd.read_csv(self.catalog_path, encoding='utf-8', dtype=str)
         except UnicodeDecodeError:
             print("[WARN] UTF-8 failed, falling back to cp1252 (Windows encoding)")
-            self.raw_catalog = pd.read_csv(self.catalog_path, encoding='cp1252')
+            self.raw_catalog = pd.read_csv(self.catalog_path, encoding='cp1252', dtype=str)
         
-        # Build the long-format match table by unpivoting identifier columns
         id_columns = ['asin', 'isbn_10', 'isbn_13', 'other_id']
         match_frames = []
         
@@ -56,39 +54,32 @@ class BookCatalog:
             return False
     
     def enrich(self, df, id_column, id_type_hint=None):
-        """
-        Merge catalog info (series, work slug, format) onto sales data.
-        
-        Args:
-            df: Sales DataFrame with a column containing book identifiers
-            id_column: Name of the column in df containing the identifiers
-            id_type_hint: Optional hint about what type of ID it is ('asin', 'isbn_13', etc.)
-                          If None, tries to match against all identifier types
-        
-        Returns:
-            DataFrame with added columns: series, canonical_work_slug, edition_format
-        """
+        """Merge catalog info onto sales data using hybrid ID/title matching."""
         if self.match_table is None:
-            # No catalog loaded — add empty columns as graceful fallback
             df['series'] = None
             df['canonical_work_slug'] = df[id_column]
             df['edition_format'] = None
             return df
         
-        # Normalize the incoming IDs for matching (strip whitespace, uppercase ASINs)
+        def _normalize_id(val):
+            """Normalize identifiers: strip whitespace, hyphens, .0 artifacts, apostrophes."""
+            import pandas as pd
+            if pd.isna(val):
+                return None
+            s = str(val).strip()
+            if s.startswith("'"):
+                s = s[1:]
+            s = s.replace('-', '')  # CRITICAL: Strip hyphens from ISBNs
+            if s.endswith('.0') and len(s) > 1 and s[:-2].isdigit():
+                s = s[:-2]
+            return s.upper()
+        
         df = df.copy()
-        df['_match_key'] = df[id_column].astype(str).str.strip()
+        df['_match_key'] = df[id_column].apply(_normalize_id)
         
-        # ASINs are uppercase alphanumeric, normalize them
-        if id_type_hint == 'asin' or (df['_match_key'].str.startswith('B0').any()):
-            df['_match_key'] = df['_match_key'].str.upper()
-            match_table = self.match_table.copy()
-            match_table['match_identifier'] = match_table['match_identifier'].astype(str).str.strip().str.upper()
-        else:
-            match_table = self.match_table.copy()
-            match_table['match_identifier'] = match_table['match_identifier'].astype(str).str.strip()
+        match_table = self.match_table.copy()
+        match_table['match_identifier'] = match_table['match_identifier'].apply(_normalize_id)
         
-        # Perform left join — keeps all sales rows even if no catalog match
         enriched = df.merge(
             match_table[['match_identifier', 'series', 'canonical_work_slug', 'edition_format']],
             left_on='_match_key',
@@ -96,13 +87,9 @@ class BookCatalog:
             how='left'
         )
         
-        # Clean up temporary columns
         enriched = enriched.drop(columns=['_match_key', 'match_identifier'])
-        
-        # Fallback: unmatched rows get the raw ID as their work slug
         enriched['canonical_work_slug'] = enriched['canonical_work_slug'].fillna(df[id_column])
         
-        # Count matches for logging
         matched = enriched['series'].notna().sum()
         total = len(enriched)
         print(f"[INFO] Catalog enrichment: {matched}/{total} rows matched to catalog")

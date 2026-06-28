@@ -16,6 +16,40 @@ ACX_NEW_FORMAT = {
     'Royalty Rate': 'royalty_rate',
 }
 
+# Amazon KDP Combined Sales column mapping
+KDP_COMBINED_FORMAT = {
+    'Royalty Date': 'sale_date',
+    'Title': 'book_title',
+    'Author Name': 'Author Name',
+    'ASIN/ISBN': 'book_identifier',
+    'Marketplace': 'marketplace_raw',
+    'Royalty Type': 'royalty_type_raw',
+    'Transaction Type': 'transaction_type',
+    'Net Units Sold': 'quantity',
+    'Avg. List Price without tax': 'price',
+    'Royalty': 'royalty_amount',
+    'Currency': 'currency',
+}
+
+# Amazon marketplace domain → region code mapping
+KDP_MARKETPLACE_MAP = {
+    'Amazon.com': 'US',
+    'Amazon.co.uk': 'UK',
+    'Amazon.de': 'DE',
+    'Amazon.fr': 'FR',
+    'Amazon.it': 'IT',
+    'Amazon.es': 'ES',
+    'Amazon.com.au': 'AU',
+    'Amazon.ca': 'CA',
+    'Amazon.co.jp': 'JP',
+    'Amazon.in': 'IN',
+    'Amazon.nl': 'NL',
+    'Amazon.com.mx': 'MX',
+    'Amazon.com.br': 'BR',
+    'Amazon.se': 'SE',
+    'Amazon.pl': 'PL',
+}
+
 ACX_OLD_FORMAT = {
     # Old format needs special wide-to-long reshaping later
     # Placeholder — implement after ACX new format works
