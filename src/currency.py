@@ -1,4 +1,10 @@
-# src/currency.py
+"""Currency conversion utilities using historical ECB exchange rates.
+
+Handles multi-currency royalties with automatic fallback for weekends,
+holidays, and unpublished exchange rate dates. Supports backward-looking
+conversion up to 30 days into the past when exact date unavailable.
+"""
+
 from currency_converter import CurrencyConverter
 from datetime import date, timedelta
 import pandas as pd
@@ -6,6 +12,15 @@ import pandas as pd
 _converter = None
 
 def get_converter():
+    """
+    Initialize CurrencyConverter instance with bundeled ECB historical rates.
+    
+    Args:
+        date_str: Optional reference date (not used currently; converter uses its own bundle)
+    
+    Returns:
+        CurrencyConverter instance ready for historical conversions
+    """
     global _converter
     if _converter is None:
         _converter = CurrencyConverter()

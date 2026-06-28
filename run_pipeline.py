@@ -12,11 +12,34 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.book_catalog import BookCatalog
 from src.loaders import load_all_acx_reports, load_all_acx_legacy_reports, load_all_kdp_reports
 from src.kenp_loader import load_kenp_data
-from src.analyzer import init_database, init_kenp_table, ingest_dataframe, get_monthly_summary_query, close_connection
+from src.patreon_loader import load_patreon_data
+from src.woo_loader import load_woo_data
+from src.aubooks_loader import load_aubooks_data
 from src.currency import to_usd
+from src.analyzer import init_database, init_kenp_table, init_patreon_table, init_woo_table, init_aubooks_table, ingest_dataframe, get_monthly_summary_query, get_series_performance_query, close_connection
 
 
 def main():
+    """
+    Execute end-to-end author revenue analytics pipeline.
+    
+    Loads raw royalty exports from ACX, Amazon KDP, Patreon, WooCommerce,
+    and Audiobooks Unleashed; normalizes currencies to USD via ECB rates;
+    enriches transactions with book metadata from catalog; persists to
+    SQLite warehouse; initializes analytical SQL queries.
+    
+    Pipeline flow:
+        1. Reset database for fresh load
+        2. Process all source platforms (sales → KENP → Patreon → WooCommerce → AU Books)
+        3. Initialize SQLite tables (5 fact tables + 1 dimension table)
+        4. Ingest normalized data
+        5. Generate results summary
+        6. Close connections cleanly
+    
+    Raises:
+        FileNotFoundError: If required data directories or catalog are missing
+        KeyError: If unexpected column names in input files
+    """
     print("=" * 60)
     print("AUTHOR BUSINESS ANALYTICS PIPELINE")
     print("=" * 60)
@@ -25,6 +48,18 @@ def main():
     DATA_DIR = PROJECT_ROOT / 'data'
     CATALOG_FILE = DATA_DIR / 'catalog_products.csv'
 
+    # Step 0: Reset database
+    print("=" * 60)
+    print("STEP 0: RESETTING DATABASE")
+    print("=" * 60)
+
+    db_path = Path("data/author_analytics.db")
+    if db_path.exists():
+        db_path.unlink()
+        print("[INFO] Existing database deleted for fresh load")
+    else:
+        print("[INFO] No existing database found, starting fresh")
+        
     # Step 1: Load the book catalog
     print(f"\nLoading catalog from {CATALOG_FILE}...")
     try:
@@ -76,7 +111,111 @@ def main():
     else:
         df_kenp = None
         print("[WARN] KDP file not found, skipping KENP processing")
+        
+    # Step 2c: Process Patreon earnings
+    print("\n" + "=" * 60)
+    print("STEP 2C: PATREON EARNINGS")
+    print("=" * 60)
 
+    patreon_dir = Path("data/raw/patreon")
+    patreon_files = sorted(patreon_dir.glob("*.csv"))
+
+    if patreon_files:
+        patreon_dfs = []
+        for pf in patreon_files:
+            df_pat = load_patreon_data(pf)
+            patreon_dfs.append(df_pat)
+
+        df_patreon = pd.concat(patreon_dfs, ignore_index=True)
+
+        # Deduplicate in case of overlapping exports
+        df_patreon = df_patreon.drop_duplicates(subset=['sale_date'])
+
+        print(f"\n[Patreon] {len(df_patreon)} unique monthly records ready for ingestion")
+    else:
+        print("[WARN] No Patreon CSV files found in data/raw/patreon/")
+        df_patreon = pd.DataFrame()
+
+    # Step 2d: Process WooCommerce Sales
+    print("\n" + "=" * 60)
+    print("STEP 2D: WOOCOMMERCE SALES")
+    print("=" * 60)
+
+    woo_dir = Path("data/raw/woocommerce")
+    woo_files = sorted(woo_dir.glob("*.csv"))
+
+    if woo_files:
+        woo_dfs = []
+        non_empty_count = 0
+        for wf in woo_files:
+            df_woo = load_woo_data(wf, catalog=catalog)
+            if not df_woo.empty:
+                woo_dfs.append(df_woo)
+                non_empty_count += 1
+                print(f"[INFO] {wf.name}: {len(df_woo)} products ({df_woo['items_sold'].sum():,} units)")
+
+        if woo_dfs:
+            # Concatenate all exports first
+            df_woocommerce = pd.concat(woo_dfs, ignore_index=True)
+
+            # Check for overlapping date ranges on same product
+            dup_check = df_woocommerce.groupby(['product_name', 'period_start', 'period_end']).size()
+            actual_duplicates = dup_check[dup_check > 1].count()
+            
+            if actual_duplicates > 0:
+                print(f"[WARN] Found {actual_duplicates} products appearing in multiple files "
+                      f"(overlapping date ranges). Aggregating by product + period...")
+                
+                # Group by product and date range, sum numeric columns
+                df_woocommerce = df_woocommerce.groupby(['product_name', 'period_start', 'period_end']).agg({
+                    'source_platform': 'first',
+                    'sku': 'first',
+                    'category': 'first',
+                    'items_sold': 'sum',
+                    'net_sales': 'sum',
+                    'orders_count': 'sum',
+                    'canonical_work_slug': 'first',
+                    'series': 'first',
+                    'edition_format': 'first',
+                }).reset_index()
+            else:
+                print("[INFO] No duplicate product-period combinations detected")
+
+            print(f"\n[WooCommerce] {len(df_woocommerce)} unique product-period records "
+                  f"across {non_empty_count} files ready for ingestion")
+        else:
+            print("[WARN] No valid WooCommerce data loaded")
+            df_woocommerce = pd.DataFrame()
+    else:
+        print("[WARN] No WooCommerce CSV files found in data/raw/woocommerce/")
+        df_woocommerce = pd.DataFrame()
+
+    # Step 2e: Process Audiobooks Unleashed
+    print("\n" + "=" * 60)
+    print("STEP 2E: AUDIOBOOKS UNLEASHED")
+    print("=" * 60)
+
+    au_dir = Path("data/raw/audiobooks-unleashed")
+    au_files = sorted(au_dir.glob("*.pdf"))
+
+    if au_files:
+        au_dfs = []
+        for af in au_files:
+            df_au = load_aubooks_data(af, catalog=catalog)
+            if not df_au.empty:
+                au_dfs.append(df_au)
+
+        if au_dfs:
+            df_aubooks = pd.concat(au_dfs, ignore_index=True)
+            print(f"\n[Audiobooks Unleashed] {len(df_aubooks)} total records "
+                  f"ready for ingestion")
+        else:
+            print("[WARN] No valid AU Books data loaded")
+            df_aubooks = pd.DataFrame()
+    else:
+        print("[WARN] No AU Books PDF files found in data/raw/audiobooks-unleashed/")
+        df_aubooks = pd.DataFrame()
+    
     # Step 3: Currency normalization (sales data)
     print("\n" + "=" * 60)
     print("STEP 3: CURRENCY NORMALIZATION")
@@ -167,7 +306,22 @@ def main():
     # Ingest KENP data into separate table
     if df_kenp is not None and len(df_kenp) > 0:
         ingest_dataframe(conn, df_kenp, table_name='kenp_reads')
+        
+    # Patreon table
+    init_patreon_table(conn)
+    if not df_patreon.empty:
+        patreon_rows = ingest_dataframe(conn, df_patreon, 'fact_patreon_earnings')
 
+    # WooCommerce table
+    init_woo_table(conn)
+    if not df_woocommerce.empty:
+        woo_rows = ingest_dataframe(conn, df_woocommerce, 'fact_woo_sales')
+
+    # Audiobooks Unleashed table
+    init_aubooks_table(conn)
+    if not df_aubooks.empty:
+        au_rows = ingest_dataframe(conn, df_aubooks, 'fact_aubooks_sales')
+        
     # Verify
     print("\nQuerying database for verification...")
     monthly_results = get_monthly_summary_query(conn)

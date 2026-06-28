@@ -40,7 +40,7 @@ def extract_date_from_acx_filename(filename):
     raise ValueError(f"Cannot parse date from filename: {filename}")
 
 
-def _match_titles_to_catalog(df, catalog, threshold=0.8):
+def _match_titles_to_catalog(df, catalog, threshold=0.75):
     """
     Match catalog entries based on book title similarity (fallback when IDs unavailable).
     
@@ -80,7 +80,7 @@ def _match_titles_to_catalog(df, catalog, threshold=0.8):
             cand_lower = candidate.lower().strip()
             cand_clean = re.sub(r'\s*:\s*.*$', '', cand_lower)
             cand_clean = re.sub(r'\s*\([^)]*\)', '', cand_clean)
-            cand_clean = cand_lower.replace('&', 'and').strip()
+            cand_clean = cand_clean.replace('&', 'and').strip()  # FIXED: was cand_lower
 
             score = SequenceMatcher(None, title_clean, cand_clean).ratio()
 

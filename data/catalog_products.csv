@@ -5,8 +5,8 @@ standalone,carmilla_and_laura,Carmilla and Laura,ebook,B07K2K998H,,978-1-7324611
 standalone,carmilla_and_laura,Carmilla and Laura,audiobook,B092XPMHT7,,978-1-952349-29-4,BK_ACX0_251571,
 standalone,carmilla_and_laura,Carmilla and Laura,hardcover,,1952349176,978-1-952349-17-1,,
 standalone,carmilla_and_laura,Carmilla and Laura,paperback,,1732461147,978-1-7324611-4-7,,
-standalone,carmilla_and_laura,Carmilla and Laura,special edition paperback,,,,,
-standalone,carmilla_and_laura,Carmilla and Laura,special edition hardcover,,,978-1-952349-21-8,,
+standalone,carmilla_and_laura,Carmilla and Laura Deluxe Edition,deluxe paperback,,,,,
+standalone,carmilla_and_laura,Carmilla and Laura Deluxe Edition,deluxe hardcover,,,978-1-952349-21-8,,
 fallen_gods,the_sting_of_victory,The Sting of Victory,ebook,B07H63V28W,,978-1-7324611-1-6,,549
 fallen_gods,the_sting_of_victory,The Sting of Victory,paperback,,1732461120,978-1-7324611-2-3,,
 fallen_gods,the_sting_of_victory,The Sting of Victory,hardcover,,1952349095,978-1-952349-09-6,,
@@ -25,15 +25,15 @@ fallen_gods,eve_of_endless_night,Eve of Endless Night,hardcover,,1952349206,978-
 fallen_gods,chaos_undone,Chaos Undone,ebook,B0CXKDTWKP,,978-1-952349-22-5,,1507
 fallen_gods,chaos_undone,Chaos Undone,paperback,,1952349230,978-1-952349-23-2,,
 fallen_gods,chaos_undone,Chaos Undone,hardcover,,1952349249,978-1-952349-24-9,,
-sea_and_stars,the_fate_of_stars,The Fate of Stars,ebook,B086KTLSNM,,978-1-7324611-9-2,,335
+sea_and_stars,the_fate_of_stars,The Fate of Stars,ebook,B086KTLSNM,,978-1-7324611-9-2,BK_ACX0_232922,335
 sea_and_stars,the_fate_of_stars,The Fate of Stars,audiobook,B08T6PQT99,,978-1-952349-04-1,,
 sea_and_stars,the_fate_of_stars,The Fate of Stars,paperback,,1952349036,978-1-952349-08-9,,
 sea_and_stars,the_fate_of_stars,The Fate of Stars,hardcover,,1952349141,978-1-952349-14-0,,
-sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,ebook,B087CCLL5V,,978-1-952349-00-3,,284
+sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,ebook,B087CCLL5V,,978-1-952349-00-3,BK_ACX0_235684,284
 sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,audiobook,B08VX2LWPW,,978-1-952349-06-5,,
 sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,paperback,,195234901X,978-1-952349-01-0 ,,
 sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,hardcover,,195234915X,978-1-952349-15-7,,
-sea_and_stars,deaths_abyss,Death’s Abyss,ebook,B088XWLJLQ,,978-1-952349-02-7,,387
+sea_and_stars,deaths_abyss,Death’s Abyss,ebook,B088XWLJLQ,,978-1-952349-02-7,BK_ACX0_238289,387
 sea_and_stars,deaths_abyss,Death’s Abyss,audiobook,B08X4TTCLR,,978-1-952349-07-2,,
 sea_and_stars,deaths_abyss,Death’s Abyss,paperback,,1952349036,978-1-952349-03-4,,
 sea_and_stars,deaths_abyss,Death’s Abyss,hardcover,,1952349168,978-1-952349-16-4 ,,
@@ -43,4 +43,6 @@ steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,ebook,
 steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,audiobook,,,978-1-952349-28-7,,
 steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,paperback,,,978-1-952349-25-6,,
 steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,hardcover,,,978-1-952349-26-3,,
+steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly – Special Edition,deluxe paperback,,,,,
+steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly – Special Edition,deluxe hardcover,,,,,
 standalone,moon_stars_desert_below,"The Moon, The Stars, and The Desert Below",paperback,,,978-1-952349-31-7,,

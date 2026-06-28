@@ -1,9 +1,17 @@
-"""Simple SQL validation test - Pass/Fail only."""
+"""SQL query validation and integrity check suite.
+
+Verifies analytical queries against the author business analytics database.
+Runs sanity checks on row counts, date ranges, total revenues, and cross-table
+consistency. Flags data anomalies like negative quantities, out-of-range
+dates, or mismatched totals between related aggregations.
+"""
+
 import sqlite3
 from pathlib import Path
 
 
 def main():
+    """Run all SQL query validation tests and display results."""
     print("SQL QUERY VALIDATION TEST")
     print("=" * 50)
 

@@ -1,16 +1,17 @@
 # Author Business Analytics
 
-A data engineering pipeline that ingests, normalizes, and analyzes royalty revenue across multiple publishing platforms (ACX, Amazon KDP) into a unified analytics warehouse with USD-normalized currency and backward-derived Kindle Unlimited (KENP) royalty allocation.
+A data engineering pipeline that ingests, normalizes, and analyzes royalty revenue across five publishing and distribution platforms (ACX, Amazon KDP, Patreon, WooCommerce, Audiobooks Unleashed) into a unified analytics warehouse with USD-normalized currency, backward-derived Kindle Unlimited (KENP) royalty allocation, and multi-format catalog enrichment.
 
 ## Problem Statement
 
-Independent authors receive monthly royalty reports from multiple sales platforms in inconsistent formats — varying schemas, incompatible identifiers, multi-currency transactions, missing transaction dates, and embedded PII (personally identifiable information). This pipeline solves that by:
+Independent authors receive monthly royalty reports from multiple sales platforms in inconsistent formats — varying schemas, incompatible identifiers, multi-currency transactions, missing transaction dates, PDF-formatted statements, and embedded PII (personally identifiable information). This pipeline solves that by:
 
-- **Unifying** disparate export formats into a single canonical schema
+- **Unifying** disparate export formats (Excel, CSV, PDF) into a single canonical schema
 - **Normalizing** multi-currency revenue to USD using historical ECB exchange rates
 - **Deriving** Kindle Unlimited (KENP) royalties via backward calculation from Summary and Combined Sales tabs
-- **Enriching** transaction records with a custom book catalog (series, format, edition)
-- **Persisting** clean data into a relational SQLite warehouse with dual fact tables
+- **Parsing** PDF royalty statements from wide-distribution audiobook platforms
+- **Enriching** transaction records with a custom book catalog (series, format, edition, KENP page counts)
+- **Persisting** clean data into a relational SQLite warehouse with five fact tables
 - **Analyzing** revenue trends via SQL queries and visualizations
 
 ## Architecture
@@ -21,30 +22,39 @@ Independent authors receive monthly royalty reports from multiple sales platform
 - ACX Legacy (.xls) → Cross-tab Unpivot → Catalog Enrichment → SQLite
 - Amazon KDP Combined Sales (.xlsx) → Schema Mapping → Currency Conversion → Catalog Enrichment → SQLite
 - Amazon KDP KENP (.xlsx) → Backward Rate Derivation → USD Conversion → Equivalent Copies → SQLite
+- Patreon (.csv) → Column Mapping → Numeric Normalization → SQLite
+- WooCommerce (.csv) → Filename Date Parsing → Substring + Fuzzy Title Matching → SQLite
+- Audiobooks Unleashed (.pdf) → pdfplumber Text Extraction → Multi-Section Parsing → ISBN/ASIN Matching → SQLite
 
 ### Pipeline Stages
 
 1. **Ingestion** — Platform-specific loaders parse Excel files with openpyxl and pandas
 2. **Normalization** — Dictionary-based column mapping unifies disparate schemas to snake_case
 3. **Privacy** — PII columns (author names, royalty earners) stripped before any processing
-4. **Date Extraction** — Reporting month parsed from filenames via regex (ACX reports lack date columns)
+4. **Date Extraction** — From columns (KDP, Patreon), filenames (WooCommerce), PDF text (AU Books), or report periods (ACX)
 5. **Currency Conversion** — Non-USD royalty amounts converted using historical ECB reference rates (nearest available business day for weekends/holidays)
 6. **KENP Royalty Derivation** — Kindle Unlimited page reads monetized via backward calculation from Summary tab residuals
-7. **Catalog Enrichment** — Hybrid matching strategy links transactions to book metadata (including KENP page counts)
-8. **Persistence** — Filtered DataFrames loaded into SQLite star schema with dual fact tables and indexes
-9. **Analytics** — 8 SQL query patterns covering time series, rankings, regional analysis, KENP engagement, and format breakdowns
-10. **Visualization** — 8 publication-quality charts generated from the warehouse
+7. **KENP Royalty Derivation** — Kindle Unlimited page reads monetized via backward calculation from Summary tab residuals
+8. **Catalog Enrichment** — Multi-strategy matching links transactions to book metadata:
+   - Stage 1: Deterministic identifier match (ASIN, ISBN-10, ISBN-13, ACX product codes)
+   - Stage 2a: Substring containment (WooCommerce product names containing catalog titles)
+   - Stage 2b: Fuzzy title matching via `difflib.SequenceMatcher` with regex preprocessing
+9. **Persistence** — Filtered DataFrames loaded into SQLite star schema with five fact tables and indexes
+10. **Analytics** — 8 SQL query patterns covering time series, rankings, regional analysis, KENP engagement, and format breakdowns
+11. **Visualization** — 8 publication-quality charts generated from the warehouse
 
 ## Key Technical Decisions
 
 ### Hybrid Entity Resolution
 
-Sales records arrive with different identifier types across platforms — ASINs for Kindle ebooks, ISBN-13s for paperbacks/hardcovers, and internal ACX product IDs for audiobooks. The pipeline resolves these through a two-stage approach:
+Sales records arrive with different identifier types across platforms — ASINs for Kindle ebooks, ISBN-13s for paperbacks/hardcovers, and internal ACX product IDs for audiobooks. The pipeline resolves these through a multi-stage approach:
 
 - **Stage 1 (Deterministic):** Exact ID match against a normalized catalog of ASINs, ISBN-10s, ISBN-13s, and internal IDs. Identifiers are normalized (hyphens stripped, float coercion handled, whitespace trimmed) to ensure cross-platform compatibility.
 - **Stage 2 (Heuristic Fallback):** Fuzzy title matching via `difflib.SequenceMatcher` with regex preprocessing (strips parentheticals, normalizes `&`/`and`) — only runs on unmatched rows
+- **Stage 2a (Substring Containment):** For WooCommerce products with no SKUs, checks if any catalog display title appears as a substring within the product name. Catches variants like "Carmilla & Laura Deluxe Edition Hardcover" → "Carmilla and Laura".
+- **Stage 2b (Fuzzy Fallback):** Only runs on unmatched rows after Stage 2a fails.
 
-**Result:** 100% match rate across 9,416 records (5,891 sales + 3,525 KENP reads) spanning 3 source formats.
+**Result:** 100% match rate across all identifier-bearing records (11,686 total). WooCommerce achieves 69% match (remainder is legitimately non-book merchandise).
 
 ### Identifier Normalization
 
@@ -84,29 +94,33 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 
 ### Dimensional Modeling
 
-- **Star schema:** `sales_fact` (transactions) + `kenp_reads` (page reads) + `dim_books` (book metadata)
-- **7 indexes:** date, series, platform, region (sales) + date, series, region (KENP)
+- **Star schema:** Five fact tables + `dim_books` dimension table (`sales_fact`, `kenp_reads`, `fact_patreon_earnings`, `fact_woo_sales`, `fact_aubooks_sales`)
+- **Indexes:** Date, series, platform, region, ISBN, category (12 total)
 - **Dual currency storage:** Both raw source amounts and USD-normalized amounts for auditability
-- **Separate fact tables:** Sales and KENP reads have fundamentally different grains (per-sale vs. per-read), so they're stored in separate tables to avoid nullable column anti-patterns
+- **Database reset:** Fresh database on each pipeline run prevents duplicate accumulation
 
 ## Data Coverage
 
 | Metric | Value |
 |--------|-------|
-| Source platforms | ACX (audiobooks), Amazon KDP (ebooks, paperbacks, KENP) |
-| Source formats | 2 (ACX new .xlsx, ACX legacy .xls, KDP .xlsx) |
-| Files processed | 63 monthly reports |
+| Source platforms | ACX, Amazon KDP, Patreon, WooCommerce, Audiobooks Unleashed |
+| Source formats | 4 (Excel .xlsx, Excel .xls, CSV, PDF) |
+| Files processed | 100+ monthly reports across all platforms |
 | Date range | June 2018 – June 2026 |
-| Sales records ingested | 5,891 transactions |
-| KENP records ingested | 3,525 page-read events |
-| Total records | 9,416 |
+| Sales records (ACX + KDP) | 5,891 transactions |
+| KENP records | 3,525 page-read events |
+| Patreon records | 74 monthly earnings summaries |
+| WooCommerce records | 333 product-period summaries |
+| AU Books records | 1,863 audiobook royalty line items |
+| Total records | 11,686 |
 | Currencies handled | 9 (USD, EUR, GBP, CAD, AUD, BRL, MXN, INR, JPY) |
-| Catalog editions | 45 across 6 formats |
-| Catalog identifiers indexed | 85 (ASINs, ISBN-10s, ISBN-13s, internal IDs) |
+| Catalog editions | 45+ across 6+ formats |
+| Catalog identifiers indexed | 85+ (ASINs, ISBN-10s, ISBN-13s, ACX codes, other IDs) |
 | KENP rates derived | 663 effective rates across 9 currencies |
-| Book formats tracked | ebook, paperback, hardcover, audiobook, special editions |
-| Database tables | 3 (sales_fact + kenp_reads + dim_books) |
-| SQL indexes | 7 |
+| Book formats tracked | ebook, paperback, hardcover, audiobook, deluxe hardcover, deluxe paperback, special editions |
+| AU Books distributors | 25+ (ACX, BookBeat, Storytel, OverDrive, Spotify, Scribd, Kobo, etc.) |
+| Database tables | 5 fact tables + 1 dimension table |
+| SQL indexes | 12 |
 | Visualizations | 8 charts |
 
 ## Tech Stack
@@ -117,6 +131,7 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 - **xlrd** — Legacy Excel file parsing (.xls)
 - **sqlite3** — Embedded analytics database (standard library)
 - **matplotlib** — Chart generation
+- **pdfplumber** — PDF text extraction (Audiobooks Unleashed statements)
 - **numpy** — Numerical operations for visualizations
 - **CurrencyConverter** — Historical ECB exchange rate conversion
 - **difflib** — Fuzzy string matching (standard library)
@@ -128,6 +143,9 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 - `book_catalog.py` — Book metadata crosswalk with identifier normalization and hybrid matching
 - `loaders.py` — Platform-specific ingestion (ACX new, ACX legacy, Amazon KDP)
 - `kenp_loader.py` — KENP page-read ingestion with backward rate derivation and equivalent copies calculation
+- `patreon_loader.py` — Monthly earnings aggregation with fee breakdowns
+- `woo_loader.py` — Product-level sales with filename date parsing and title-based enrichment
+- `aubooks_loader.py` — PDF statement parsing with multi-section book header detection
 - `analyzer.py` — SQLite database layer, schema definition (3 tables), and analytical queries
 - `currency.py` — USD currency conversion using historical ECB reference rates
 - `visualizer.py` — Matplotlib chart generation (8 charts)
@@ -137,6 +155,9 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 - `data/raw/acx-new/` — ACX .xlsx reports (Apr 2024 – Apr 2026)
 - `data/raw/acx-old/` — ACX legacy .xls reports (Mar 2021 – Mar 2024)
 - `data/raw/amazon-kdp/` — Amazon KDP .xlsx reports (Combined Sales, Summary, KENP tabs)
+- `data/raw/patreon/` — Patreon monthly earnings CSV exports
+- `data/raw/woocommerce/` — WooCommerce product analytics CSV exports
+- `data/raw/audiobooks-unleashed/` — AU Books "Royalty Detail" PDF statements
 
 **Outputs**
 - `results/figures/` — Generated PNG charts
@@ -160,6 +181,9 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
     #    - data/raw/acx-new/     (ACX .xlsx files)
     #    - data/raw/acx-old/     (ACX legacy .xls files)
     #    - data/raw/amazon-kdp/  (KDP .xlsx files with Combined Sales, Summary, KENP tabs)
+	#    - data/raw/patreon/              (Patreon monthly earnings CSV exports)
+    #    - data/raw/woocommerce/          (WooCommerce product analytics CSV exports)
+    #    - data/raw/audiobooks-unleashed/ (AU Books "Royalty Detail" PDF statements)
 
     # 2. Run the full pipeline (ingestion → currency conversion → KENP derivation → enrichment → SQLite)
     python run_pipeline.py
@@ -197,13 +221,33 @@ Charts are saved as PNGs in `results/figures/`:
 - [x] KENP equivalent copies calculation (apples-to-apples comparison vs direct sales)
 - [x] Expanded visualizations (4 → 8 charts)
 - [x] Privacy-first PII stripping
+- [x] Patreon monthly earnings loader (aggregate subscription income)
+- [x] WooCommerce product analytics loader (subtitle matching + fuzzy fallback)
+- [x] Audiobooks Unleashed PDF parser (multi-section detail extraction)
+- [x] Multi-platform integration (5 fact tables, 11,686 total records)
 
-### Planned
-- [ ] KOLL (Kindle Owners' Lending Library) borrow tracking (deprecated ~2018, relevant for multi-author rollout)
-- [ ] Amazon KDP Orders Processed loader (daily order-level detail)
+### Near-Term Targets
 - [ ] Draft2Digital loader (CSV format)
 - [ ] Barnes & Noble Press loader
-- [ ] pytest unit tests
-- [ ] GitHub Actions CI/CD
-- [ ] PostgreSQL migration + Docker
-- [ ] Streamlit web dashboard
+- [ ] Kobo Store & Kobo Plus subscriber data (CSV/API exports)
+- [ ] Ingram Spark royalty reports (PDF/table parsing)
+- [ ] Square transactions (merchant payments, tip jar data)
+- [ ] Redbubble shop sales (artist marketplace income)
+- [ ] Kickstarter campaign funding (project-based revenue tracking)
+
+### Long-Term Exploration
+- [ ] KOLL (Kindle Owners' Lending Library) borrow tracking (deprecated ~2018, relevant for multi-author rollout)
+- [ ] Amazon KDP Orders Processed loader (daily order-level detail)
+- [ ] Editorial editing work invoices (PayPal receipt parsing + service revenue categorization)
+- [ ] Etsy store analytics (digital downloads, physical merch, custom commissions)
+- [ ] Ko-fi memberships & tips (micro-tipping + recurring subscriptions)
+- [ ] itch.io game/assets revenue (interactive media sales tracking)
+
+### Infrastructure Improvements
+- [ ] pytest unit tests (loader validation, currency conversion edge cases, schema integrity)
+- [ ] GitHub Actions CI/CD (automated linting, test suite execution on PRs)
+- [ ] PostgreSQL migration + Docker containerization (scalability beyond SQLite limits)
+- [ ] API integration layer (replace manual file exports with automated API pulls for platforms that support them — Patreon, WooCommerce, Square, itch.io)
+- [ ] Streamlit web dashboard (real-time analytics interface, interactive filtering, scheduled report generation)
+- [ ] Scheduled ETL runs (Airflow or cron-based automation for weekly/monthly refresh cycles)
+- [ ] Cross-platform revenue forecasting models (predictive analytics using historical trends)
