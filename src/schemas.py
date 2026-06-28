@@ -8,7 +8,7 @@ ACX_NEW_FORMAT = {
     'Title': 'book_title',
     'Digital ISBN': 'isbn',
     'Transaction Type': 'transaction_type',
-    'Region': 'region',  # Renamed from 'Marketplace'
+    'Marketplace': 'region',
     'Currency': 'currency',
     'Net Units': 'quantity',
     'Net Sales': 'price',
