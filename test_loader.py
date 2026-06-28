@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.book_catalog import BookCatalog
 from src.loaders import load_all_acx_reports
 from src.analyzer import init_database, ingest_dataframe, get_monthly_summary_query, close_connection
-
+from src.loaders import load_all_acx_reports, load_all_acx_legacy_reports
+import pandas as pd
 
 def main():
     print("=" * 50)
@@ -47,16 +48,28 @@ def main():
         print(f"[ERROR] Failed to load catalog: {e}")
         return
     
-    # Step 2: Run batch processing on all ACX files
+    # Step 2: Run batch processing on all ACX files (both formats)
     print("\n" + "=" * 60)
     print("STEP 2: BATCH PROCESSING ACX REPORTS")
     print("=" * 60)
     
-    df = load_all_acx_reports(ACX_FOLDER, catalog=catalog)
+    ACX_FOLDER_NEW = DATA_DIR / 'raw' / 'acx-new'
+    ACX_FOLDER_OLD = DATA_DIR / 'raw' / 'acx-old'
     
-    if df.empty:
-        print("\n❌ ERROR: No data was processed. Check logs above.")
+    df_new = load_all_acx_reports(ACX_FOLDER_NEW, catalog=catalog)
+    df_old = load_all_acx_legacy_reports(ACX_FOLDER_OLD, catalog=catalog)
+    
+    # Combine both formats into one unified DataFrame
+    if df_new.empty and df_old.empty:
+        print("\n❌ ERROR: No data was processed from either format.")
         return
+    elif df_new.empty:
+        df = df_old
+    elif df_old.empty:
+        df = df_new
+    else:
+        df = pd.concat([df_new, df_old], ignore_index=True)
+        print(f"\n[INFO] Combined {len(df_new)} new-format + {len(df_old)} legacy = {len(df)} total records")
     
     # Step 3: Display results summary
     print(f"\n{'=' * 50}")

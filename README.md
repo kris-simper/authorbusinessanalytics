@@ -59,10 +59,10 @@ ACX reports export internal product IDs (`BK_ACX0_XXXXXX`) that don't match ASIN
 | Metric | Value |
 |--------|-------|
 | Source platform | ACX Audiobooks |
-| Files processed | 24 monthly reports |
-| Date range | April 2024 - April 2026 |
-| Records ingested | 291 transactions |
-| Catalog match rate | 100% (291/291) |
+| Files processed | 62 monthly reports |
+| Date range | March 2021 - April 2026 |
+| Records ingested | 529 transactions |
+| Catalog match rate | 100% (529/529) |
 | Database tables | 2 (sales_fact + dim_books) |
 | SQL indexes | 4 (date, series, platform, region) |
 
