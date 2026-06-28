@@ -93,8 +93,8 @@ ACX reports export internal product IDs (`BK_ACX0_XXXXXX`) that don't match ASIN
 
 **Root Files**
 - `sql_queries.sql` — Showcase analytical SQL queries
-- `test_loader.py` — End-to-end pipeline test harness
-- `test_sql_queries.py` — SQL validation test suite
+- `run_pipeline.py` — End-to-end pipeline test harness
+- `validate_queries.py` — SQL validation test suite
 - `requirements.txt` — Python dependencies
 - `.gitignore` — Excludes raw data, DBs, caches
 
@@ -106,12 +106,12 @@ ACX reports export internal product IDs (`BK_ACX0_XXXXXX`) that don't match ASIN
 
 ### Running the Pipeline
 
-    # 1. Place ACX royalty exports in data/raw/acx-new/
+    # 1. Place ACX royalty exports in data/raw/acx-new/ and data/raw/acx-old/
     # 2. Run the full pipeline (ingestion -> enrichment -> SQLite)
-    python test_loader.py
+    python run_pipeline.py
 
     # 3. Validate SQL queries against the database
-    python test_sql_queries.py
+    python validate_queries.py
 
     # 4. Generate visualizations
     python -m src.visualizer

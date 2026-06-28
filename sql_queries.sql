@@ -45,6 +45,7 @@ SELECT
     strftime('%m', sale_date) AS month,
     ROUND(SUM(CASE WHEN strftime('%Y', sale_date) = '2024' THEN royalty_amount ELSE 0 END), 2) AS revenue_2024,
     ROUND(SUM(CASE WHEN strftime('%Y', sale_date) = '2025' THEN royalty_amount ELSE 0 END), 2) AS revenue_2025,
+    ROUND(SUM(CASE WHEN strftime('%Y', sale_date) = '2026' THEN royalty_amount ELSE 0 END), 2) AS revenue_2026,
     CASE 
         WHEN SUM(CASE WHEN strftime('%Y', sale_date) = '2024' THEN royalty_amount ELSE 0 END) > 0 
         THEN ROUND(
@@ -52,7 +53,15 @@ SELECT
                      SUM(CASE WHEN strftime('%Y', sale_date) = '2024' THEN royalty_amount ELSE 0 END)) /
             SUM(CASE WHEN strftime('%Y', sale_date) = '2024' THEN royalty_amount ELSE 0 END), 1)
         ELSE NULL 
-    END AS yoy_growth_pct
+    END AS yoy_growth_pct_2025_vs_2024,
+    CASE 
+        WHEN SUM(CASE WHEN strftime('%Y', sale_date) = '2025' THEN royalty_amount ELSE 0 END) > 0 
+        THEN ROUND(
+            100.0 * (SUM(CASE WHEN strftime('%Y', sale_date) = '2026' THEN royalty_amount ELSE 0 END) - 
+                     SUM(CASE WHEN strftime('%Y', sale_date) = '2025' THEN royalty_amount ELSE 0 END)) /
+            SUM(CASE WHEN strftime('%Y', sale_date) = '2025' THEN royalty_amount ELSE 0 END), 1)
+        ELSE NULL 
+    END AS yoy_growth_pct_2026_vs_2025
 FROM sales_fact
 GROUP BY strftime('%m', sale_date)
 ORDER BY CAST(month AS INTEGER) ASC;
