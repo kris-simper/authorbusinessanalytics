@@ -119,23 +119,32 @@ def chart_regional_distribution(conn):
         ORDER BY total_royalties DESC
     """, conn)
 
-    fig, ax = plt.subplots(figsize=(8, 8))
+    total = df['total_royalties'].sum()
+
+    fig, ax = plt.subplots(figsize=(10, 7))
 
     colors = ['#2E86AB', '#E63946', '#F18F01', '#8AC926', '#6A4C93', '#1982C4']
 
-    wedges, texts, autotexts = ax.pie(
+    wedges, _ = ax.pie(
         df['total_royalties'],
-        labels=df['region'],
-        autopct=lambda p: f'${p * df["total_royalties"].sum() / 100:,.2f}\n({p:.1f}%)',
+        labels=None,
         colors=colors[:len(df)],
         startangle=90,
-        pctdistance=0.75,
-        textprops={'fontsize': 10}
+        wedgeprops={'edgecolor': 'white', 'linewidth': 1.5}
     )
 
-    for autotext in autotexts:
-        autotext.set_color('white')
-        autotext.set_fontweight('bold')
+    legend_labels = [
+        f'{row.region} — ${row.total_royalties:,.2f} ({row.total_royalties/total*100:.1f}%)'
+        for row in df.itertuples()
+    ]
+    ax.legend(
+        wedges,
+        legend_labels,
+        title='Regions',
+        loc='center left',
+        bbox_to_anchor=(1, 0.5),
+        fontsize=10
+    )
 
     ax.set_title('Revenue Distribution by Region', fontsize=14, fontweight='bold', pad=20)
 

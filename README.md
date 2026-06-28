@@ -77,24 +77,26 @@ ACX reports export internal product IDs (`BK_ACX0_XXXXXX`) that don't match ASIN
 
 ## Project Structure
 
-author_business_analytics/
-├── src/
-│   ├── schemas.py          # Column mapping dictionaries & PII config
-│   ├── book_catalog.py     # Book metadata crosswalk & hybrid matching
-│   ├── loaders.py          # Platform-specific ingestion (ACX, future: KDP, D2D)
-│   ├── analyzer.py         # SQLite database layer & analytical queries
-│   └── visualizer.py       # Matplotlib chart generation
-├── data/
-│   ├── catalog_products.csv # Master book catalog (series, formats, identifiers)
-│   └── raw/                 # Raw platform exports (gitignored)
-├── results/
-│   └── figures/             # Generated PNG charts
-├── sql_queries.sql          # Showcase analytical SQL queries
-├── test_loader.py           # End-to-end pipeline test harness
-├── test_sql_queries.py      # SQL validation test suite
-├── requirements.txt         # Python dependencies
-├── .gitignore               # Excludes raw data, DBs, caches
-└── README.md
+**Core Modules (`src/`)**
+- `schemas.py` — Column mapping dictionaries and PII config
+- `book_catalog.py` — Book metadata crosswalk and hybrid matching
+- `loaders.py` — Platform-specific ingestion (ACX, future: KDP, D2D)
+- `analyzer.py` — SQLite database layer and analytical queries
+- `visualizer.py` — Matplotlib chart generation
+
+**Data**
+- `data/catalog_products.csv` — Master book catalog (series, formats, identifiers)
+- `data/raw/` — Raw platform exports (gitignored)
+
+**Outputs**
+- `results/figures/` — Generated PNG charts
+
+**Root Files**
+- `sql_queries.sql` — Showcase analytical SQL queries
+- `test_loader.py` — End-to-end pipeline test harness
+- `test_sql_queries.py` — SQL validation test suite
+- `requirements.txt` — Python dependencies
+- `.gitignore` — Excludes raw data, DBs, caches
 
 ## Getting Started
 
