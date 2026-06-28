@@ -342,6 +342,116 @@ def chart_marketplace_ranking(conn):
     print(f"  Saved: {output}")
 
 
+def chart_kenp_analysis(conn):
+    """
+    Two-panel chart: KENP equivalent copies vs direct ebook sales, and KENP revenue over time.
+    
+    Panel 1: Stacked bar comparing direct ebook copies sold vs KENP equivalent copies
+    Panel 2: KENP pages read (bars) with derived revenue (line)
+    """
+    # Panel 1 data: Direct ebook copies vs KENP equivalent copies
+    df_revenue = pd.read_sql_query("""
+        SELECT period, 'Direct Ebook Sales' AS source, copies FROM (
+            SELECT strftime('%Y-%m', sale_date) AS period,
+                   SUM(quantity) AS copies
+            FROM sales_fact
+            WHERE edition_format = 'ebook'
+              AND quantity > 0
+            GROUP BY strftime('%Y-%m', sale_date)
+        )
+        UNION ALL
+        SELECT period, 'KENP Equivalent' AS source, copies FROM (
+            SELECT strftime('%Y-%m', sale_date) AS period,
+                   ROUND(SUM(equivalent_copies), 0) AS copies
+            FROM kenp_reads
+            WHERE equivalent_copies IS NOT NULL
+              AND royalty_amount_usd IS NOT NULL AND royalty_amount_usd > 0
+            GROUP BY strftime('%Y-%m', sale_date)
+        )
+        ORDER BY period ASC
+    """, conn)
+
+    # Panel 2 data: Pages read and revenue by month
+    df_pages = pd.read_sql_query("""
+        SELECT
+            strftime('%Y-%m', sale_date) AS period,
+            SUM(page_count) AS pages_read,
+            ROUND(SUM(royalty_amount_usd), 2) AS revenue_usd
+        FROM kenp_reads
+        WHERE royalty_amount_usd IS NOT NULL AND royalty_amount_usd > 0
+        GROUP BY strftime('%Y-%m', sale_date)
+        ORDER BY period ASC
+    """, conn)
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 12))
+
+    # --- Panel 1: Stacked bar — Direct ebook copies vs KENP equivalent copies ---
+    pivot = df_revenue.pivot(index='period', columns='source', values='copies').fillna(0)
+
+    # Ensure both columns exist even if one is empty
+    if 'Direct Ebook Sales' not in pivot.columns:
+        pivot['Direct Ebook Sales'] = 0
+    if 'KENP Equivalent' not in pivot.columns:
+        pivot['KENP Equivalent'] = 0
+
+    pivot = pivot[['Direct Ebook Sales', 'KENP Equivalent']]
+
+    pivot.plot(
+        kind='bar', stacked=True, ax=ax1,
+        color=['#2E86AB', '#F18F01'], width=0.8
+    )
+
+    ax1.set_title('Ebook Volume: Direct Sales vs KENP Equivalent Copies',
+                  fontsize=14, fontweight='bold', pad=15)
+    ax1.set_ylabel('Copies', fontsize=12)
+    ax1.legend(title='Source', loc='upper left', fontsize=10)
+    ax1.xaxis.set_major_locator(plt.MaxNLocator(nbins=12))
+    plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45, ha='right')
+
+    # Annotate KENP percentage on bars where it's meaningful
+    for i, (idx, row) in enumerate(pivot.iterrows()):
+        total = row['Direct Ebook Sales'] + row['KENP Equivalent']
+        if total > 0 and row['KENP Equivalent'] > 0:
+            pct = row['KENP Equivalent'] / total * 100
+            if pct >= 5:
+                ax1.text(i, total, f'{pct:.0f}%', ha='center', va='bottom',
+                         fontsize=8, fontweight='bold', color='#F18F01')
+
+    # --- Panel 2: Pages read (bars) + revenue (line) over time ---
+    periods = range(len(df_pages))
+
+    ax2.bar(periods, df_pages['pages_read'], color='#A23B72', alpha=0.7,
+            label='Pages Read')
+    ax2.set_ylabel('KENP Pages Read', fontsize=12, color='#A23B72')
+    ax2.tick_params(axis='y', labelcolor='#A23B72')
+    ax2.set_xlabel('Reporting Period', fontsize=11)
+
+    ax2b = ax2.twinx()
+    ax2b.plot(periods, df_pages['revenue_usd'], color='#F18F01',
+              marker='o', linewidth=2, label='KENP Revenue ($)')
+    ax2b.set_ylabel('KENP Revenue ($)', fontsize=12, color='#F18F01')
+    ax2b.tick_params(axis='y', labelcolor='#F18F01')
+    ax2b.yaxis.set_major_formatter(ticker.FormatStrFormatter('$%d'))
+
+    ax2.set_title('Kindle Unlimited: Pages Read & Derived Revenue',
+                  fontsize=14, fontweight='bold', pad=15)
+    ax2.set_xticks(list(periods)[::3])
+    ax2.set_xticklabels(df_pages['period'].tolist()[::3], rotation=45, ha='right')
+
+    # Combined legend for panel 2
+    lines1, labels1 = ax2.get_legend_handles_labels()
+    lines2, labels2 = ax2b.get_legend_handles_labels()
+    ax2.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize=10)
+
+    plt.suptitle('KENP (Kindle Unlimited) Analysis',
+                 fontsize=16, fontweight='bold', y=1.01)
+    plt.tight_layout()
+    output = OUTPUT_DIR / "kenp_analysis.png"
+    plt.savefig(output, bbox_inches='tight', dpi=150)
+    plt.close()
+    print(f"  Saved: {output}")
+
+
 def generate_all_charts():
     """Generate all visualization charts from the database."""
     print("=" * 60)
@@ -362,10 +472,11 @@ def generate_all_charts():
     chart_platform_comparison(conn)
     chart_format_breakdown(conn)
     chart_marketplace_ranking(conn)
+    chart_kenp_analysis(conn)
 
     conn.close()
 
-    print(f"\n[DONE] All 7 charts saved to {OUTPUT_DIR}/")
+    print(f"\n[DONE] All 8 charts saved to {OUTPUT_DIR}/")
     print("=" * 60)
 
 

@@ -76,6 +76,40 @@ def init_database(db_path=None):
     return conn
 
 
+def init_kenp_table(conn):
+    """Create the KENP reads fact table (separate grain from sales)."""
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS kenp_reads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sale_date DATE NOT NULL,
+            source_platform TEXT NOT NULL DEFAULT 'amazon_kdp_ku',
+            book_identifier TEXT,
+            canonical_work_slug TEXT,
+            series TEXT,
+            edition_format TEXT,
+            marketplace TEXT,
+            region TEXT,
+            currency TEXT,
+            page_count INTEGER,
+            rate_per_page REAL,
+            royalty_amount REAL,
+            royalty_amount_usd REAL,
+            kenp_page_count INTEGER,
+            equivalent_copies REAL,
+            FOREIGN KEY (book_identifier) REFERENCES dim_books(book_identifier)
+        )
+    """)
+    
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_kenp_date ON kenp_reads(sale_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_kenp_series ON kenp_reads(series)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_kenp_region ON kenp_reads(region)")
+    
+    conn.commit()
+    print("[INFO] KENP reads table initialized")
+    
+    
 def ingest_dataframe(conn, df, table_name='sales_fact'):
     """
     Efficiently bulk-load pandas DataFrame into SQLite.

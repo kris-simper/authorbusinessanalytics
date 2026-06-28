@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 class BookCatalog:
-    """Loads and prepares the product catalog for data enrichment."""
+    """Loads and prepares the book catalog for data enrichment."""
     
     def __init__(self, catalog_path=None):
         if catalog_path is None:
@@ -36,9 +36,17 @@ class BookCatalog:
         
         for col in id_columns:
             if col in self.raw_catalog.columns:
-                subset = self.raw_catalog[
-                    ['series', 'canonical_work_slug', 'display_title', 'edition_format', col]
-                ].dropna(subset=[col])
+                # Include kenp_page_count if it exists in the catalog
+                extra_cols = []
+                if 'kenp_page_count' in self.raw_catalog.columns:
+                    extra_cols.append('kenp_page_count')
+                
+                cols_to_select = [c for c in 
+                                  ['series', 'canonical_work_slug', 'display_title', 
+                                   'edition_format', 'kenp_page_count', col] 
+                                  if c in self.raw_catalog.columns]
+                
+                subset = self.raw_catalog[cols_to_select].dropna(subset=[col])
                 
                 subset = subset.rename(columns={col: 'match_identifier'})
                 subset['id_type'] = col
@@ -63,7 +71,6 @@ class BookCatalog:
         
         def _normalize_id(val):
             """Normalize identifiers: strip whitespace, hyphens, .0 artifacts, apostrophes."""
-            import pandas as pd
             if pd.isna(val):
                 return None
             s = str(val).strip()
@@ -80,8 +87,13 @@ class BookCatalog:
         match_table = self.match_table.copy()
         match_table['match_identifier'] = match_table['match_identifier'].apply(_normalize_id)
         
+        # Determine which columns to carry through based on what exists
+        base_cols = ['match_identifier', 'series', 'canonical_work_slug', 'edition_format']
+        if 'kenp_page_count' in match_table.columns:
+            base_cols.append('kenp_page_count')
+        
         enriched = df.merge(
-            match_table[['match_identifier', 'series', 'canonical_work_slug', 'edition_format']],
+            match_table[base_cols],
             left_on='_match_key',
             right_on='match_identifier',
             how='left'

@@ -11,7 +11,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.book_catalog import BookCatalog
 from src.loaders import load_all_acx_reports, load_all_acx_legacy_reports, load_all_kdp_reports
-from src.analyzer import init_database, ingest_dataframe, get_monthly_summary_query, close_connection
+from src.kenp_loader import load_kenp_data
+from src.analyzer import init_database, init_kenp_table, ingest_dataframe, get_monthly_summary_query, close_connection
 from src.currency import to_usd
 
 
@@ -61,19 +62,32 @@ def main():
         return
 
     df = pd.concat(all_dfs, ignore_index=True)
-    print(f"\n[INFO] Combined {len(df)} total records across all platforms")
+    print(f"\n[INFO] Combined {len(df)} total sales records across all platforms")
 
-    # Step 3: Currency normalization
+    # Step 2b: Load KENP page reads (separate fact table)
+    print("\n" + "=" * 60)
+    print("STEP 2B: PROCESSING KENP PAGE READS")
+    print("=" * 60)
+
+    KDP_FILE = KDP_FOLDER / "Lifetime Report.xlsx"
+    if KDP_FILE.exists():
+        df_kenp = load_kenp_data(KDP_FILE, catalog=catalog)
+        print(f"[INFO] KENP reads loaded: {len(df_kenp)} records")
+    else:
+        df_kenp = None
+        print("[WARN] KDP file not found, skipping KENP processing")
+
+    # Step 3: Currency normalization (sales data)
     print("\n" + "=" * 60)
     print("STEP 3: CURRENCY NORMALIZATION")
     print("=" * 60)
 
     df['currency'] = df.get('currency', pd.Series(dtype=str)).fillna('USD')
 
-    print("[INFO] Currency distribution:")
+    print("[INFO] Currency distribution (sales):")
     print(df['currency'].value_counts().to_string())
 
-    print("\n[INFO] Converting monetary values to USD...")
+    print("\n[INFO] Converting sales monetary values to USD...")
     df['royalty_amount_usd'] = df.apply(
         lambda r: to_usd(r['royalty_amount'], r['currency'], r['sale_date']),
         axis=1
@@ -84,14 +98,14 @@ def main():
     )
 
     converted = df['royalty_amount_usd'].notna().sum()
-    print(f"[INFO] {converted}/{len(df)} records converted to USD")
+    print(f"[INFO] {converted}/{len(df)} sales records converted to USD")
 
     # Step 4: Display results summary
     print(f"\n{'=' * 60}")
-    print(f"RESULTS: {len(df)} total rows loaded")
+    print(f"RESULTS: {len(df)} sales rows + {len(df_kenp) if df_kenp is not None else 0} KENP rows")
     print(f"{'=' * 60}")
 
-    print(f"\nMonthly breakdown:")
+    print(f"\nMonthly breakdown (sales only):")
     monthly = df.groupby(df['sale_date'].dt.to_period('M')).agg({
         'quantity': 'sum',
         'royalty_amount_usd': 'sum',
@@ -99,6 +113,15 @@ def main():
     }).round(2)
     monthly.index = monthly.index.astype(str)
     print(monthly.to_string())
+
+    if df_kenp is not None and len(df_kenp) > 0:
+        print(f"\nKENP monthly summary:")
+        kenp_monthly = df_kenp.groupby(df_kenp['sale_date'].dt.to_period('M')).agg({
+            'page_count': 'sum',
+            'royalty_amount_usd': 'sum'
+        }).round(2)
+        kenp_monthly.index = kenp_monthly.index.astype(str)
+        print(kenp_monthly.tail(12).to_string())
 
     print(f"\nPlatform breakdown:")
     platform_breakdown = df.groupby('source_platform').agg({
@@ -110,13 +133,13 @@ def main():
     matched = df['series'].notna().sum()
     total = len(df)
     match_rate = (matched / total * 100) if total > 0 else 0
-    print(f"\nCatalog enrichment: {matched}/{total} rows matched ({match_rate:.1f}%)")
+    print(f"\nCatalog enrichment (sales): {matched}/{total} rows matched ({match_rate:.1f}%)")
 
-    if matched < total:
-        unmatched = df[df['series'].isna()][['book_title', 'book_identifier']].head(5)
-        print(f"\n[WARN] {total - matched} rows did not match catalog")
-        print("Sample unmatched titles:")
-        print(unmatched.to_string(index=False))
+    if df_kenp is not None:
+        kenp_matched = df_kenp['series'].notna().sum()
+        kenp_total = len(df_kenp)
+        kenp_rate = (kenp_matched / kenp_total * 100) if kenp_total > 0 else 0
+        print(f"Catalog enrichment (KENP): {kenp_matched}/{kenp_total} rows matched ({kenp_rate:.1f}%)")
 
     # Step 5: Write to SQLite database
     print("\n" + "=" * 60)
@@ -124,7 +147,9 @@ def main():
     print("=" * 60)
 
     conn = init_database()
+    init_kenp_table(conn)
 
+    # Ingest sales data
     expected_columns = [
         'sale_date', 'source_platform', 'book_identifier', 'canonical_work_slug',
         'series', 'edition_format', 'region',
@@ -136,10 +161,14 @@ def main():
     ]
 
     df_for_db = df[[col for col in expected_columns if col in df.columns]].copy()
-    print(f"[INFO] Filtering DataFrame to {len(df_for_db.columns)} compatible columns")
+    print(f"[INFO] Filtering sales DataFrame to {len(df_for_db.columns)} compatible columns")
+    ingest_dataframe(conn, df_for_db)
 
-    rows_inserted = ingest_dataframe(conn, df_for_db)
+    # Ingest KENP data into separate table
+    if df_kenp is not None and len(df_kenp) > 0:
+        ingest_dataframe(conn, df_kenp, table_name='kenp_reads')
 
+    # Verify
     print("\nQuerying database for verification...")
     monthly_results = get_monthly_summary_query(conn)
 

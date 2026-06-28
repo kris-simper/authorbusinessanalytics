@@ -1,46 +1,46 @@
-series,canonical_work_slug,display_title,edition_format,asin,isbn_10,isbn_13,other_id
-standalone,beneath_the_loch,Beneath the Loch,ebook,B07DZ8CQ9D,,978-1732461109,
-standalone,beneath_the_loch,Beneath the Loch,audiobook,,,978-1-952349-32-4,BK_ACX0_245162
-standalone,carmilla_and_laura,Carmilla and Laura,ebook,B07K2K998H,,978-1-7324611-7-8,
-standalone,carmilla_and_laura,Carmilla and Laura,audiobook,B092XPMHT7,,978-1-952349-29-4,BK_ACX0_251571
-standalone,carmilla_and_laura,Carmilla and Laura,hardcover,,1952349176,978-1-952349-17-1,
-standalone,carmilla_and_laura,Carmilla and Laura,paperback,,1732461147,978-1-7324611-4-7,
-standalone,carmilla_and_laura,Carmilla and Laura,special edition paperback,,,,
-standalone,carmilla_and_laura,Carmilla and Laura,special edition hardcover,,,978-1-952349-21-8,
-fallen_gods,the_sting_of_victory,The Sting of Victory,ebook,B07H63V28W,,978-1-7324611-1-6,
-fallen_gods,the_sting_of_victory,The Sting of Victory,paperback,,1732461120,978-1-7324611-2-3,
-fallen_gods,the_sting_of_victory,The Sting of Victory,hardcover,,1952349095,978-1-952349-09-6,
-fallen_gods,among_gods_and_monsters,Among Gods and Monsters,ebook,B07N63KFXN,,978-1-7324611-5-4,
-fallen_gods,among_gods_and_monsters,Among Gods and Monsters,paperback,,1732461139,978-1-7324611-3-0,
-fallen_gods,among_gods_and_monsters,Among Gods and Monsters,hardcover,,1952349109,978-1-952349-10-2,
-fallen_gods,blood_of_the_moon,Blood of the Moon,ebook,B07SVQW5GX,,978-1-7324611-8-5,
-fallen_gods,blood_of_the_moon,Blood of the Moon,paperback,,1732461163,978-1-7324611-6-1,
-fallen_gods,blood_of_the_moon,Blood of the Moon,hardcover,,1952349117,978-1-952349-11-9,
-fallen_gods,tear_the_world_apart,Tear the World Apart,ebook,B08LKFKX7R,,978-1-952349-05-8,
-fallen_gods,tear_the_world_apart,Tear the World Apart,paperback,,1952349133,978-1-952349-13-3,
-fallen_gods,tear_the_world_apart,Tear the World Apart,hardcover,,1952349125,978-1-952349-12-6,
-fallen_gods,eve_of_endless_night,Eve of Endless Night,ebook,B0B2JTW47X,,978-1-952349-18-8,
-fallen_gods,eve_of_endless_night,Eve of Endless Night,paperback,,1952349192,978-1-952349-19-5,
-fallen_gods,eve_of_endless_night,Eve of Endless Night,hardcover,,1952349206,978-1-952349-20-1,
-fallen_gods,chaos_undone,Chaos Undone,ebook,B0CXKDTWKP,,978-1-952349-22-5,
-fallen_gods,chaos_undone,Chaos Undone,paperback,,1952349230,978-1-952349-23-2,
-fallen_gods,chaos_undone,Chaos Undone,hardcover,,1952349249,978-1-952349-24-9,
-sea_and_stars,the_fate_of_stars,The Fate of Stars,ebook,B086KTLSNM,,978-1-7324611-9-2,
-sea_and_stars,the_fate_of_stars,The Fate of Stars,audiobook,B08T6PQT99,,978-1-952349-04-1,
-sea_and_stars,the_fate_of_stars,The Fate of Stars,paperback,,1952349036,978-1-952349-08-9,
-sea_and_stars,the_fate_of_stars,The Fate of Stars,hardcover,,1952349141,978-1-952349-14-0,
-sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,ebook,B087CCLL5V,,978-1-952349-00-3,
-sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,audiobook,B08VX2LWPW,,978-1-952349-06-5,
-sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,paperback,,195234901X,978-1-952349-01-0 ,
-sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,hardcover,,195234915X,978-1-952349-15-7,
-sea_and_stars,deaths_abyss,Death’s Abyss,ebook,B088XWLJLQ,,978-1-952349-02-7,
-sea_and_stars,deaths_abyss,Death’s Abyss,audiobook,B08X4TTCLR,,978-1-952349-07-2,
-sea_and_stars,deaths_abyss,Death’s Abyss,paperback,,1952349036,978-1-952349-03-4,
-sea_and_stars,deaths_abyss,Death’s Abyss,hardcover,,1952349168,978-1-952349-16-4 ,
-sea_and_stars,beneath_the_dark_moon,Beneath the Dark Moon,ebook,B086PMGQ48,,978-1-952349-99-7,
-sea_and_stars,beneath_the_dark_moon,Beneath the Dark Moon,audiobook,B09NXKWBW7,,978-1-952349-30-0,BK_ACX0_291129
-steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,ebook,B0H2PC3QSC,,978-1-952349-27-0,
-steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,audiobook,,,978-1-952349-28-7,
-steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,paperback,,,978-1-952349-25-6,
-steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,hardcover,,,978-1-952349-26-3,
-standalone,moon_stars_desert_below,"The Moon, The Stars, and The Desert Below",paperback,,,978-1-952349-31-7,
+series,canonical_work_slug,display_title,edition_format,asin,isbn_10,isbn_13,other_id,kenp_page_count
+standalone,beneath_the_loch,Beneath the Loch,ebook,B07DZ8CQ9D,,978-1732461109,,62
+standalone,beneath_the_loch,Beneath the Loch,audiobook,,,978-1-952349-32-4,BK_ACX0_245162,
+standalone,carmilla_and_laura,Carmilla and Laura,ebook,B07K2K998H,,978-1-7324611-7-8,,201
+standalone,carmilla_and_laura,Carmilla and Laura,audiobook,B092XPMHT7,,978-1-952349-29-4,BK_ACX0_251571,
+standalone,carmilla_and_laura,Carmilla and Laura,hardcover,,1952349176,978-1-952349-17-1,,
+standalone,carmilla_and_laura,Carmilla and Laura,paperback,,1732461147,978-1-7324611-4-7,,
+standalone,carmilla_and_laura,Carmilla and Laura,special edition paperback,,,,,
+standalone,carmilla_and_laura,Carmilla and Laura,special edition hardcover,,,978-1-952349-21-8,,
+fallen_gods,the_sting_of_victory,The Sting of Victory,ebook,B07H63V28W,,978-1-7324611-1-6,,549
+fallen_gods,the_sting_of_victory,The Sting of Victory,paperback,,1732461120,978-1-7324611-2-3,,
+fallen_gods,the_sting_of_victory,The Sting of Victory,hardcover,,1952349095,978-1-952349-09-6,,
+fallen_gods,among_gods_and_monsters,Among Gods and Monsters,ebook,B07N63KFXN,,978-1-7324611-5-4,,464
+fallen_gods,among_gods_and_monsters,Among Gods and Monsters,paperback,,1732461139,978-1-7324611-3-0,,
+fallen_gods,among_gods_and_monsters,Among Gods and Monsters,hardcover,,1952349109,978-1-952349-10-2,,
+fallen_gods,blood_of_the_moon,Blood of the Moon,ebook,B07SVQW5GX,,978-1-7324611-8-5,,578
+fallen_gods,blood_of_the_moon,Blood of the Moon,paperback,,1732461163,978-1-7324611-6-1,,
+fallen_gods,blood_of_the_moon,Blood of the Moon,hardcover,,1952349117,978-1-952349-11-9,,
+fallen_gods,tear_the_world_apart,Tear the World Apart,ebook,B08LKFKX7R,,978-1-952349-05-8,,1214
+fallen_gods,tear_the_world_apart,Tear the World Apart,paperback,,1952349133,978-1-952349-13-3,,
+fallen_gods,tear_the_world_apart,Tear the World Apart,hardcover,,1952349125,978-1-952349-12-6,,
+fallen_gods,eve_of_endless_night,Eve of Endless Night,ebook,B0B2JTW47X,,978-1-952349-18-8,,885
+fallen_gods,eve_of_endless_night,Eve of Endless Night,paperback,,1952349192,978-1-952349-19-5,,
+fallen_gods,eve_of_endless_night,Eve of Endless Night,hardcover,,1952349206,978-1-952349-20-1,,
+fallen_gods,chaos_undone,Chaos Undone,ebook,B0CXKDTWKP,,978-1-952349-22-5,,1507
+fallen_gods,chaos_undone,Chaos Undone,paperback,,1952349230,978-1-952349-23-2,,
+fallen_gods,chaos_undone,Chaos Undone,hardcover,,1952349249,978-1-952349-24-9,,
+sea_and_stars,the_fate_of_stars,The Fate of Stars,ebook,B086KTLSNM,,978-1-7324611-9-2,,335
+sea_and_stars,the_fate_of_stars,The Fate of Stars,audiobook,B08T6PQT99,,978-1-952349-04-1,,
+sea_and_stars,the_fate_of_stars,The Fate of Stars,paperback,,1952349036,978-1-952349-08-9,,
+sea_and_stars,the_fate_of_stars,The Fate of Stars,hardcover,,1952349141,978-1-952349-14-0,,
+sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,ebook,B087CCLL5V,,978-1-952349-00-3,,284
+sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,audiobook,B08VX2LWPW,,978-1-952349-06-5,,
+sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,paperback,,195234901X,978-1-952349-01-0 ,,
+sea_and_stars,heart_of_silver_flame,Heart of Silver Flame,hardcover,,195234915X,978-1-952349-15-7,,
+sea_and_stars,deaths_abyss,Death’s Abyss,ebook,B088XWLJLQ,,978-1-952349-02-7,,387
+sea_and_stars,deaths_abyss,Death’s Abyss,audiobook,B08X4TTCLR,,978-1-952349-07-2,,
+sea_and_stars,deaths_abyss,Death’s Abyss,paperback,,1952349036,978-1-952349-03-4,,
+sea_and_stars,deaths_abyss,Death’s Abyss,hardcover,,1952349168,978-1-952349-16-4 ,,
+sea_and_stars,beneath_the_dark_moon,Beneath the Dark Moon,ebook,B086PMGQ48,,978-1-952349-99-7,,26
+sea_and_stars,beneath_the_dark_moon,Beneath the Dark Moon,audiobook,B09NXKWBW7,,978-1-952349-30-0,BK_ACX0_291129,
+steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,ebook,B0H2PC3QSC,,978-1-952349-27-0,,258
+steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,audiobook,,,978-1-952349-28-7,,
+steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,paperback,,,978-1-952349-25-6,,
+steaming_hearts,to_love_the_stars_too_fondly,To Love the Stars too Fondly,hardcover,,,978-1-952349-26-3,,
+standalone,moon_stars_desert_below,"The Moon, The Stars, and The Desert Below",paperback,,,978-1-952349-31-7,,
