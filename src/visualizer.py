@@ -1,7 +1,17 @@
 """
-Visualization module for author business analytics.
-Generates publication-quality charts from SQLite database.
+DEPRECATED: Static chart generation via matplotlib.
+
+This module has been superseded by the Streamlit dashboard with Plotly.
+Charts will be removed in future versions. Use streamlit_app.py instead.
 """
+
+import warnings
+warnings.warn(
+    "visualizer.py is deprecated and will be removed in future versions."
+    "Use the Streamlit dashboard instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import sqlite3
 from pathlib import Path

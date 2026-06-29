@@ -41,7 +41,6 @@ Independent authors receive monthly royalty reports from multiple sales platform
    - Stage 2b: Fuzzy title matching via `difflib.SequenceMatcher` with regex preprocessing
 9. **Persistence** — Filtered DataFrames loaded into SQLite star schema with five fact tables and indexes
 10. **Analytics** — 8 SQL query patterns covering time series, rankings, regional analysis, KENP engagement, and format breakdowns
-11. **Visualization** — 8 publication-quality charts generated from the warehouse
 
 ## Key Technical Decisions
 
@@ -121,7 +120,6 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 | AU Books distributors | 25+ (ACX, BookBeat, Storytel, OverDrive, Spotify, Scribd, Kobo, etc.) |
 | Database tables | 5 fact tables + 1 dimension table |
 | SQL indexes | 12 |
-| Visualizations | 8 charts |
 
 ## Tech Stack
 
@@ -148,7 +146,6 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 - `aubooks_loader.py` — PDF statement parsing with multi-section book header detection
 - `analyzer.py` — SQLite database layer, schema definition (3 tables), and analytical queries
 - `currency.py` — USD currency conversion using historical ECB reference rates
-- `visualizer.py` — Matplotlib chart generation (8 charts)
 
 **Data**
 - `data/catalog_products.csv` — Master book catalog (series, formats, identifiers, KENP page counts)
@@ -192,22 +189,7 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
     python validate_queries.py
 
     # 4. Generate visualizations
-    python -m src.visualizer
-
-    # 5. View charts in results/figures/
-
-### Viewing Results
-
-Charts are saved as PNGs in `results/figures/`:
-
-- `monthly_revenue.png` — Monthly royalties (USD) and units sold over time
-- `series_performance.png` — Revenue by book series
-- `regional_distribution.png` — Geographic revenue split
-- `top_titles.png` — Top 10 titles by revenue
-- `platform_comparison.png` — Stacked bar chart of monthly revenue by source platform
-- `format_breakdown.png` — Dual-panel: revenue share (pie) + units sold (bar) by edition format
-- `marketplace_ranking.png` — Triple-panel: top markets by revenue, volume, and avg transaction value
-- `kenp_analysis.png` — Dual-panel: direct ebook copies vs KENP equivalent copies (stacked bar) + KENP pages read with derived revenue (bar + line)
+    streamlit run streamlit_app.py
 
 ## Roadmap
 
@@ -251,3 +233,6 @@ Charts are saved as PNGs in `results/figures/`:
 - [ ] Streamlit web dashboard (real-time analytics interface, interactive filtering, scheduled report generation)
 - [ ] Scheduled ETL runs (Airflow or cron-based automation for weekly/monthly refresh cycles)
 - [ ] Cross-platform revenue forecasting models (predictive analytics using historical trends)
+
+
+Deprecation Note: Note: The legacy src/visualizer.py producing static PNG charts has been retired. All analytics visualization is now handled through the Streamlit dashboard.
