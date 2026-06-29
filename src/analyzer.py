@@ -74,6 +74,53 @@ def init_database(db_path=None):
     conn.commit()
     print(f"[INFO] Database initialized at {db_path}")
     return conn
+    
+def populate_dim_books(conn, catalog):
+    """
+    Populate dim_books dimension table from the BookCatalog instance.
+    
+    Picks a primary identifier per edition (ASIN > ISBN-13 > ISBN-10 > other_id)
+    and concatenates all identifiers into an other_ids column for reference.
+    
+    Args:
+        conn: Active SQLite connection
+        catalog: BookCatalog instance with raw_catalog loaded
+    """
+    if catalog is None or catalog.raw_catalog is None:
+        print("[WARN] No catalog data to populate dim_books")
+        return 0
+
+    df = catalog.raw_catalog.copy()
+
+    # Pick primary identifier: prefer ASIN, then ISBN-13, then ISBN-10, then other_id
+    id_columns = ['asin', 'isbn_13', 'isbn_10', 'other_id']
+
+    def pick_primary_id(row):
+        for col in id_columns:
+            if col in row.index and pd.notna(row[col]) and str(row[col]).strip():
+                return str(row[col]).strip()
+        return None
+
+    df['book_identifier'] = df.apply(pick_primary_id, axis=1)
+
+    # Collect all identifiers into a semicolon-separated reference string
+    def collect_other_ids(row):
+        ids = []
+        for col in id_columns:
+            if col in row.index and pd.notna(row[col]) and str(row[col]).strip():
+                ids.append(f"{col}:{str(row[col]).strip()}")
+        return "; ".join(ids)
+
+    df['other_ids'] = df.apply(collect_other_ids, axis=1)
+
+    # Select only the columns that match the dim_books schema
+    dim_df = df[['book_identifier', 'canonical_work_slug', 'display_title',
+                 'series', 'edition_format', 'other_ids']].dropna(subset=['book_identifier'])
+
+    dim_df.to_sql('dim_books', conn, if_exists='append', index=False)
+    conn.commit()
+    print(f"[INFO] Populated dim_books with {len(dim_df)} editions")
+    return len(dim_df)
 
 
 def init_kenp_table(conn):

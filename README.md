@@ -34,13 +34,12 @@ Independent authors receive monthly royalty reports from multiple sales platform
 4. **Date Extraction** — From columns (KDP, Patreon), filenames (WooCommerce), PDF text (AU Books), or report periods (ACX)
 5. **Currency Conversion** — Non-USD royalty amounts converted using historical ECB reference rates (nearest available business day for weekends/holidays)
 6. **KENP Royalty Derivation** — Kindle Unlimited page reads monetized via backward calculation from Summary tab residuals
-7. **KENP Royalty Derivation** — Kindle Unlimited page reads monetized via backward calculation from Summary tab residuals
-8. **Catalog Enrichment** — Multi-strategy matching links transactions to book metadata:
+7. **Catalog Enrichment** — Multi-strategy matching links transactions to book metadata:
    - Stage 1: Deterministic identifier match (ASIN, ISBN-10, ISBN-13, ACX product codes)
    - Stage 2a: Substring containment (WooCommerce product names containing catalog titles)
    - Stage 2b: Fuzzy title matching via `difflib.SequenceMatcher` with regex preprocessing
-9. **Persistence** — Filtered DataFrames loaded into SQLite star schema with five fact tables and indexes
-10. **Analytics** — 8 SQL query patterns covering time series, rankings, regional analysis, KENP engagement, and format breakdowns
+8. **Persistence** — Filtered DataFrames loaded into SQLite star schema with five fact tables and indexes
+9. **Analytics** — Interactive Streamlit dashboard with Plotly visualizations covering time series, rankings, regional analysis, KENP engagement, distributor breakdowns, and YoY growth
 
 ## Key Technical Decisions
 
@@ -128,11 +127,14 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 - **openpyxl** — Excel file parsing (.xlsx, read-only mode for performance)
 - **xlrd** — Legacy Excel file parsing (.xls)
 - **sqlite3** — Embedded analytics database (standard library)
-- **matplotlib** — Chart generation
+- **Streamlit** — Interactive web dashboard framework
+- **Plotly** — Interactive charting and data visualization
 - **pdfplumber** — PDF text extraction (Audiobooks Unleashed statements)
-- **numpy** — Numerical operations for visualizations
 - **CurrencyConverter** — Historical ECB exchange rate conversion
 - **difflib** — Fuzzy string matching (standard library)
+- ~~**matplotlib**~~ — Deprecated (static PNG charts superseded by Plotly dashboard)
+- ~~**numpy**~~ — Deprecated (was only used by static visualizer)
+
 
 ## Project Structure
 
@@ -144,7 +146,7 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 - `patreon_loader.py` — Monthly earnings aggregation with fee breakdowns
 - `woo_loader.py` — Product-level sales with filename date parsing and title-based enrichment
 - `aubooks_loader.py` — PDF statement parsing with multi-section book header detection
-- `analyzer.py` — SQLite database layer, schema definition (3 tables), and analytical queries
+- `analyzer.py` — SQLite database layer, schema definition (6 tables: 5 fact + 1 dimension), and data ingestion
 - `currency.py` — USD currency conversion using historical ECB reference rates
 
 **Data**
@@ -157,14 +159,15 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 - `data/raw/audiobooks-unleashed/` — AU Books "Royalty Detail" PDF statements
 
 **Outputs**
-- `results/figures/` — Generated PNG charts
+- `streamlit_app.py` — Interactive Streamlit dashboard (Plotly charts, date filtering, cached queries)
 
 **Root Files**
-- `sql_queries.sql` — Showcase analytical SQL queries (YoY, rankings, regional)
 - `run_pipeline.py` — End-to-end pipeline entry point
-- `validate_queries.py` — SQL validation test suite
+- `streamlit_app.py` — Interactive web dashboard
 - `requirements.txt` — Python dependencies
 - `.gitignore` — Excludes raw data, DBs, caches
+- `sql_queries.sql` — *(Deprecated)* Showcase analytical SQL queries — retained for educational reference
+- `validate_queries.py` — *(Deprecated)* SQL validation suite — retained for educational reference
 
 ## Getting Started
 
@@ -175,21 +178,42 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 ### Running the Pipeline
 
     # 1. Place royalty exports in their respective data/raw/ subdirectories:
-    #    - data/raw/acx-new/     (ACX .xlsx files)
-    #    - data/raw/acx-old/     (ACX legacy .xls files)
-    #    - data/raw/amazon-kdp/  (KDP .xlsx files with Combined Sales, Summary, KENP tabs)
-	#    - data/raw/patreon/              (Patreon monthly earnings CSV exports)
-    #    - data/raw/woocommerce/          (WooCommerce product analytics CSV exports)
-    #    - data/raw/audiobooks-unleashed/ (AU Books "Royalty Detail" PDF statements)
+    #    - data/raw/acx-new/                (ACX .xlsx files)
+    #    - data/raw/acx-old/                (ACX legacy .xls files)
+    #    - data/raw/amazon-kdp/             (KDP .xlsx files with Combined Sales, Summary, KENP tabs)
+    #    - data/raw/patreon/                (Patreon monthly earnings CSV exports)
+    #    - data/raw/woocommerce/            (WooCommerce product analytics CSV exports)
+    #    - data/raw/audiobooks-unleashed/   (AU Books "Royalty Detail" PDF statements)
 
     # 2. Run the full pipeline (ingestion → currency conversion → KENP derivation → enrichment → SQLite)
     python run_pipeline.py
 
-    # 3. Validate SQL queries against the database
-    python validate_queries.py
-
-    # 4. Generate visualizations
+    # 3. Launch the interactive dashboard
     streamlit run streamlit_app.py
+
+## SQL Techniques Demonstrated
+
+The pipeline and dashboard leverage advanced analytical SQL patterns beyond basic CRUD operations. Showcase queries with explanations live in `sql_queries.sql`; validation tests in `validate_queries.py` confirm they execute against real data.
+
+| Technique | Query | Application |
+|-----------|-------|-------------|
+| **Window functions** (`ROW_NUMBER()`, `SUM() OVER`, `AVG() OVER`) | Series Contribution Ranking, Pareto Analysis, Moving Averages, TTM Run Rate | Ranking within partitions, cumulative calculations, rolling averages |
+| **Frame clause specification** (`ROWS BETWEEN x PRECEDING AND CURRENT ROW`) | 3-Month & 12-Month Moving Averages, Trailing 12-Month Run Rate | Sliding window aggregation for time-series smoothing |
+| **`LAG()` window function** | Month-over-Month Growth Rate | Accessing prior row values for period-over-period differencing |
+| **Recursive CTE** | Revenue Gap Detection | Generating continuous month sequences to find missing periods |
+| **Correlated subquery** | Dominant Platform Per Month | Finding the maximum-revenue platform for each period without window functions |
+| **Recursive CTE + LEFT JOIN** | Month Gap Detection | Synthetic time series generation joined against actual data to identify gaps |
+| **Self-join** | Platform Diversification Analysis | Computing per-period market share and concentration risk |
+| **Multi-CTE pipeline** (4+ nested CTEs) | Pareto, Diversification | Breaking complex analytical logic into composable, readable stages |
+| **`UNION ALL`** (6-table aggregation) | All dashboard queries | Unifying fact tables with different schemas into a single result set |
+| **`strftime()` date manipulation** | All time-series queries | SQLite-native date formatting for grouping by month/year |
+| **`COALESCE()`** for null handling | Distribution, Pareto | Graceful substitution for missing dimension values |
+
+### Where to find these patterns
+
+- **`sql_queries.sql`** — 8 annotated showcase queries with explanatory headers (deprecated file, retained for educational reference)
+- **`validate_queries.py`** — 18-test validation suite confirming all queries execute against the real database
+- **`streamlit_app.py`** — Production queries embedded in the dashboard (CTEs, window functions, UNION ALL, date manipulation across 6 pages and 10+ charts)
 
 ## Roadmap
 
@@ -201,12 +225,20 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 - [x] Identifier normalization (ISBN hyphens, float coercion, cross-platform matching)
 - [x] KENP backward rate derivation (actual Amazon rates, not approximations)
 - [x] KENP equivalent copies calculation (apples-to-apples comparison vs direct sales)
-- [x] Expanded visualizations (4 → 8 charts)
 - [x] Privacy-first PII stripping
 - [x] Patreon monthly earnings loader (aggregate subscription income)
 - [x] WooCommerce product analytics loader (subtitle matching + fuzzy fallback)
 - [x] Audiobooks Unleashed PDF parser (multi-section detail extraction)
 - [x] Multi-platform integration (5 fact tables, 11,686 total records)
+- [x] Interactive Streamlit dashboard (Plotly charts, date filtering, cached queries, 4 pages)
+- [x] AU Books distributor breakdown chart (revenue, units, avg transaction by distributor)
+- [x] Streamlit web dashboard (real-time analytics interface, interactive filtering)
+- [x] Revenue concentration / Pareto analysis (dual-axis combo chart, window functions)
+- [x] Forecasting page (seasonality heatmap, moving averages, TTM run rate, diversification trend)
+- [x] WooCommerce books vs. merchandise breakdown (stacked bar, category share)
+- [x] Platform channel share over time (100% stacked bar)
+- [x] dim_books dimension table population (star schema completion)
+- [x] Advanced SQL showcase library (8 analytical patterns with validation suite)
 
 ### Near-Term Targets
 - [ ] Draft2Digital loader (CSV format)
@@ -230,9 +262,18 @@ Each ebook enrolled in KDP Select has a fixed KENP page count (set by Amazon at 
 - [ ] GitHub Actions CI/CD (automated linting, test suite execution on PRs)
 - [ ] PostgreSQL migration + Docker containerization (scalability beyond SQLite limits)
 - [ ] API integration layer (replace manual file exports with automated API pulls for platforms that support them — Patreon, WooCommerce, Square, itch.io)
-- [ ] Streamlit web dashboard (real-time analytics interface, interactive filtering, scheduled report generation)
+- [ ] Additional dashboard charts (cumulative revenue waterfall, cohort retention analysis, anomaly detection alerts)
+- [ ] Streamlit dashboard enhancements (scheduled dashboard generation)
 - [ ] Scheduled ETL runs (Airflow or cron-based automation for weekly/monthly refresh cycles)
 - [ ] Cross-platform revenue forecasting models (predictive analytics using historical trends)
 
 
-Deprecation Note: Note: The legacy src/visualizer.py producing static PNG charts has been retired. All analytics visualization is now handled through the Streamlit dashboard.
+## Deprecated Files
+
+The following files remain in the repository for educational reference but are no longer part of the active pipeline:
+
+- **`src/visualizer.py`** — Static matplotlib PNG chart generation. Superseded by the Streamlit dashboard with interactive Plotly charts. Will be removed in v2.0.
+- **`sql_queries.sql`** — Standalone SQL showcase queries (CTEs, UNION ALL, window functions, date manipulation). Superseded by embedded queries in the dashboard but retained to demonstrate raw SQL proficiency.
+- **`validate_queries.py`** — Query validation suite used during development. Dashboard queries now fail gracefully with user-facing error messages.
+
+To explore the data interactively: `streamlit run streamlit_app.py`

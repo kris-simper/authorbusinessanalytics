@@ -16,7 +16,7 @@ from src.patreon_loader import load_patreon_data
 from src.woo_loader import load_woo_data
 from src.aubooks_loader import load_aubooks_data
 from src.currency import to_usd
-from src.analyzer import init_database, init_kenp_table, init_patreon_table, init_woo_table, init_aubooks_table, ingest_dataframe, get_monthly_summary_query, get_series_performance_query, close_connection
+from src.analyzer import init_database, init_kenp_table, populate_dim_books, init_patreon_table, init_woo_table, init_aubooks_table, ingest_dataframe, get_monthly_summary_query, get_series_performance_query, close_connection
 
 
 def main():
@@ -286,6 +286,8 @@ def main():
     print("=" * 60)
 
     conn = init_database()
+    populate_dim_books(conn, catalog)
+    
     init_kenp_table(conn)
 
     # Ingest sales data
