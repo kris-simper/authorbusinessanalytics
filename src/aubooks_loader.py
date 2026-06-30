@@ -8,23 +8,56 @@ and a money flow chain (Gross -> Received -> Less Fee -> Payable -> Percent -> R
 
 ISBNs from section headers are matched against the book catalog for series/work
 enrichment. Currency is parsed from the PDF header and converted to USD.
+
+Grain: One row per distributor-transaction-line (individual sale event).
+Kimball compliance: Separate fact table due to audiobook-specific fields
+(gross/received/fee/payable money chain, royalty percentage, distributor source)
+that don't map to ebook sales fact tables.
 """
 
 import re
+from pathlib import Path
+
 import pdfplumber
 import pandas as pd
-from pathlib import Path
+
+from src.currency import to_usd
+
+
+# ===================================================================
+# CONSTANTS
+# ===================================================================
+
+# Valid ISO currency codes for detection in PDF headers
+_VALID_CURRENCIES = {'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR',
+                     'BRL', 'MXN', 'PLN', 'SEK', 'NZD'}
+
+# Hardcoded name/address fragments to skip during PDF line parsing.
+# These appear in AU Books PDF headers and are not book titles or data rows.
+# If the publisher changes their template, update these accordingly.
+_SKIP_PREFIXES = [
+    'royalty account', 'shauntel', 'glen cove',
+    'united states', 'info@', 'sdsimper',
+]
 
 
 # ===================================================================
 # UTILITY FUNCTIONS
 # ===================================================================
 
-def _parse_money(s):
+def _parse_money(s: str | float) -> float:
     """
     Clean and parse a monetary string.
+
     Handles currency symbols, parentheses for negatives, European decimal
     format (1.234,56), and bare numbers.
+
+    Args:
+        s: Raw monetary string from PDF text extraction (may include symbols,
+           letters, parentheses, or European formatting)
+
+    Returns:
+        Parsed float value, or 0.0 if the string cannot be parsed
     """
     if not s or pd.isna(s):
         return 0.0
@@ -60,26 +93,43 @@ def _parse_money(s):
         return 0.0
 
 
-def _is_money_token(token):
-    """Check if a token looks like a monetary value (including parens negatives)."""
+def _is_money_token(token: str) -> bool:
+    """
+    Check if a token looks like a monetary value.
+
+    Matches currency symbols, digits, dots, commas, parentheses, and
+    minus signs — the formats produced by _parse_money's input variants.
+
+    Args:
+        token: Single whitespace-delimited token from a PDF text line
+
+    Returns:
+        True if the token matches a monetary value pattern
+    """
     cleaned = re.sub(r'[\u20ac\u00a3\u00a5$]', '', token)
-    # Allow digits, dots, commas, parentheses, minus sign
     return bool(re.match(r'^\(?-?[\d.,]+\)?$', cleaned))
 
 
-def _parse_data_row(line):
+def _parse_data_row(line: str) -> dict | None:
     """
     Parse a single AU Books data row from extracted text.
 
     Expected format:
-    M/D/YYYY  SOURCE  QTY  LOCATION  GROSS  RECEIVED  FEE  PAYABLE  PERCENT%  ROYALTY
+        M/D/YYYY  SOURCE  QTY  LOCATION  GROSS  RECEIVED  FEE  PAYABLE  PERCENT%  ROYALTY
 
     Strategy:
-    1. Date anchored at start (M/D/YYYY format)
-    2. Percent value (ends with %) anchors boundary between middle and end
-    3. Royalty is everything after percent
-    4. Work backwards from percent to extract 4 money values
-    5. Remaining middle tokens = source, qty, location
+        1. Date anchored at start (M/D/YYYY format)
+        2. Percent value (ends with %) anchors boundary between middle and end
+        3. Royalty is everything after percent
+        4. Work backwards from percent to extract 4 money values
+        5. Remaining middle tokens = source, qty, location
+
+    Args:
+        line: Single line of text extracted from the PDF
+
+    Returns:
+        Dictionary with parsed row fields, or None if the line does not
+        match the expected data row format
     """
     # Must start with a date in M/D/YYYY format
     date_match = re.match(r'^(\d{1,2}/\d{1,2}/\d{4})\s+', line)
@@ -152,16 +202,11 @@ def _parse_data_row(line):
     }
 
 
-# Valid ISO currency codes for detection
-_VALID_CURRENCIES = {'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR',
-                      'BRL', 'MXN', 'PLN', 'SEK', 'NZD'}
-
-
 # ===================================================================
 # MAIN LOADER
 # ===================================================================
 
-def load_aubooks_data(filepath, catalog=None):
+def load_aubooks_data(filepath: str | Path, catalog=None) -> pd.DataFrame:
     """
     Load Audiobooks Unleashed royalty detail PDF.
 
@@ -174,7 +219,8 @@ def load_aubooks_data(filepath, catalog=None):
         catalog: BookCatalog instance for ISBN-based enrichment
 
     Returns:
-        DataFrame with parsed royalty data ready for database ingestion
+        DataFrame with parsed royalty data ready for database ingestion.
+        Column mapping aligns with fact_aubooks_sales schema in analyzer.py.
     """
     filepath = Path(filepath)
     print(f"[INFO] Loading Audiobooks Unleashed data from {filepath.name}")
@@ -230,10 +276,8 @@ def load_aubooks_data(filepath, catalog=None):
                                      'dashbook', 'all amounts')):
                     continue
 
-                # Skip account/address lines
-                if any(lower.startswith(prefix) for prefix in
-                       ['royalty account', 'shauntel', 'glen cove',
-                        'united states', 'info@', 'sdsimper']):
+                # Skip account/address lines (see _SKIP_PREFIXES comment)
+                if any(lower.startswith(prefix) for prefix in _SKIP_PREFIXES):
                     continue
 
                 # Skip period line (we parse dates from data rows instead)
@@ -249,11 +293,11 @@ def load_aubooks_data(filepath, catalog=None):
                     r'(?:ASIN|Product Code)[:\s]*([A-Za-z0-9_]+)',
                     line_stripped, re.IGNORECASE
                 )
-                
+
                 if isbn_match or asin_match:
                     # Prefer ISBN if available, else fall back to ASIN/product code
                     current_isbn = isbn_match.group(1) if isbn_match else asin_match.group(1)
-                    
+
                     # Look backwards through title candidates for the book title
                     for candidate in reversed(title_candidates):
                         # Must not be a data row (doesn't start with a date)
@@ -272,7 +316,6 @@ def load_aubooks_data(filepath, catalog=None):
                     all_rows.append(row)
                 else:
                     # Could be a book title on its own line
-                    # Only track if it's not a data row and looks like a title
                     if (len(line_stripped) > 2 and
                         not re.match(r'^\d{1,2}/\d{1,2}/\d{4}', line_stripped) and
                         '@' not in line_stripped):
@@ -298,15 +341,15 @@ def load_aubooks_data(filepath, catalog=None):
     # Currency conversion to USD
     if currency != 'USD':
         print(f"[INFO] Converting {currency} royalties to USD...")
-        from src.currency import to_usd
         df['royalty_amount_usd'] = df.apply(
-            lambda r: to_usd(
-                r['royalty_amount_local'], currency, r['sale_date']
-            ),
-            axis=1
+            lambda r: to_usd(r['royalty_amount_local'], currency, r['sale_date']),
+            axis=1,
         )
     else:
         df['royalty_amount_usd'] = df['royalty_amount_local']
+
+    converted = df['royalty_amount_usd'].notna().sum()
+    print(f"[INFO] {converted}/{len(df)} records converted to USD")
 
     # Catalog enrichment via ISBN matching
     if catalog is not None and 'book_isbn' in df.columns:
@@ -332,6 +375,13 @@ def load_aubooks_data(filepath, catalog=None):
     ]
 
     df_result = df[[c for c in final_columns if c in df.columns]].copy()
+
+    # Drop rows with null sale_date (defensive guard for malformed PDF lines)
+    before = len(df_result)
+    df_result = df_result[df_result['sale_date'].notna()].copy()
+    dropped = before - len(df_result)
+    if dropped > 0:
+        print(f"[INFO] Dropped {dropped} rows with null sale_date")
 
     print(f"[INFO] AU Books load complete: {len(df_result)} records")
     print(f"[INFO] Total royalty (local): "

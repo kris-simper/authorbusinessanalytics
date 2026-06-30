@@ -11,7 +11,7 @@ import pandas as pd
 DATABASE_PATH = "data/author_analytics.db"
 
 
-def init_database(db_path=None):
+def init_database(db_path: str = None) -> sqlite3.Connection:
     """
     Create fresh SQLite database with optimal table schema.
     
@@ -74,8 +74,9 @@ def init_database(db_path=None):
     conn.commit()
     print(f"[INFO] Database initialized at {db_path}")
     return conn
-    
-def populate_dim_books(conn, catalog):
+
+
+def populate_dim_books(conn: sqlite3.Connection, catalog) -> int:
     """
     Populate dim_books dimension table from the BookCatalog instance.
     
@@ -85,6 +86,9 @@ def populate_dim_books(conn, catalog):
     Args:
         conn: Active SQLite connection
         catalog: BookCatalog instance with raw_catalog loaded
+    
+    Returns:
+        Number of editions inserted into dim_books
     """
     if catalog is None or catalog.raw_catalog is None:
         print("[WARN] No catalog data to populate dim_books")
@@ -123,8 +127,13 @@ def populate_dim_books(conn, catalog):
     return len(dim_df)
 
 
-def init_kenp_table(conn):
-    """Create the KENP reads fact table (separate grain from sales)."""
+def init_kenp_table(conn: sqlite3.Connection) -> None:
+    """
+    Create the KENP reads fact table (separate grain from sales).
+     
+    Args:
+        conn: Active SQLite connection
+    """
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -157,8 +166,13 @@ def init_kenp_table(conn):
     print("[INFO] KENP reads table initialized")
 
 
-def init_patreon_table(conn):
-    """Create the Patreon earnings fact table (monthly aggregate grain)."""
+def init_patreon_table(conn: sqlite3.Connection) -> None:
+    """
+    Create the Patreon earnings fact table (monthly aggregate grain).
+     
+    Args:
+        conn: Active SQLite connection
+    """
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -186,11 +200,16 @@ def init_patreon_table(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_patreon_date ON fact_patreon_earnings(sale_date)")
     
     conn.commit()
-    print("[INFO] Patreon earnings table initialized")    
-    
+    print("[INFO] Patreon earnings table initialized")
 
-def init_woo_table(conn):
-    """Create the WooCommerce sales fact table (product-level grain per date range)."""
+
+def init_woo_table(conn: sqlite3.Connection) -> None:
+    """
+    Create the WooCommerce sales fact table (product-level grain per date range).
+     
+    Args:
+        conn: Active SQLite connection
+    """
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -219,8 +238,13 @@ def init_woo_table(conn):
     print("[INFO] WooCommerce sales table initialized")
 
 
-def init_aubooks_table(conn):
-    """Create the Audiobooks Unleashed sales fact table (line-item grain)."""
+def init_aubooks_table(conn: sqlite3.Connection) -> None:
+    """
+    Create the Audiobooks Unleashed sales fact table (line-item grain).
+     
+    Args:
+        conn: Active SQLite connection
+    """
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -254,8 +278,271 @@ def init_aubooks_table(conn):
     conn.commit()
     print("[INFO] Audiobooks Unleashed sales table initialized")
 
+
+def init_d2d_table(conn: sqlite3.Connection) -> None:
+    """
+    Create the Draft2Digital sales fact table.
+     
+    Args:
+        conn: Active SQLite connection
+    """
+    cursor = conn.cursor()
     
-def ingest_dataframe(conn, df, table_name='sales_fact'):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fact_d2d_sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sale_date DATE NOT NULL,
+            source_platform TEXT NOT NULL DEFAULT 'draft2digital',
+            book_identifier TEXT,
+            canonical_work_slug TEXT,
+            series TEXT,
+            edition_format TEXT,
+            distributor TEXT,
+            vendor TEXT,
+            country TEXT,
+            quantity INTEGER DEFAULT 0,
+            units_returned INTEGER DEFAULT 0,
+            list_price REAL,
+            offer_price REAL,
+            currency TEXT DEFAULT 'USD',
+            royalty_amount REAL,
+            royalty_amount_usd REAL,
+            royalty_rate REAL,
+            fee_per_unit REAL,
+            FOREIGN KEY (book_identifier) REFERENCES dim_books(book_identifier),
+            FOREIGN KEY (canonical_work_slug) REFERENCES dim_books(canonical_work_slug)
+        )
+    """)
+    
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_d2d_date ON fact_d2d_sales(sale_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_d2d_isbn ON fact_d2d_sales(book_identifier)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_d2d_distributor ON fact_d2d_sales(distributor)")
+    
+    conn.commit()
+    print("[INFO] Draft2Digital sales table initialized")
+
+
+def init_bnl_table(conn: sqlite3.Connection) -> None:
+    """
+    Create the Barnes & Noble Press sales fact table.
+     
+    Args:
+        conn: Active SQLite connection
+    """
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fact_bnl_sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sale_date DATE NOT NULL,
+            source_platform TEXT NOT NULL DEFAULT 'barnes_noble',
+            book_identifier TEXT,
+            bn_identifier TEXT,
+            canonical_work_slug TEXT,
+            series TEXT,
+            edition_format TEXT,
+            title TEXT,
+            source_format TEXT,
+            list_price REAL,
+            sale_price REAL,
+            selling_currency TEXT DEFAULT 'USD',
+            payment_currency TEXT DEFAULT 'USD',
+            units_sold INTEGER DEFAULT 0,
+            units_returned INTEGER DEFAULT 0,
+            quantity INTEGER DEFAULT 0,
+            royalty_rate REAL,
+            royalty_per_unit REAL,
+            royalty_amount REAL,
+            royalty_amount_usd REAL,
+            FOREIGN KEY (book_identifier) REFERENCES dim_books(book_identifier),
+            FOREIGN KEY (canonical_work_slug) REFERENCES dim_books(canonical_work_slug)
+        )
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bnl_date ON fact_bnl_sales(sale_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bnl_isbn ON fact_bnl_sales(book_identifier)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bnl_format ON fact_bnl_sales(edition_format)")
+
+    conn.commit()
+    print("[INFO] Barnes & Noble sales table initialized")
+
+
+def init_kobo_table(conn: sqlite3.Connection) -> None:
+    """
+    Create the Kobo Store sales fact table.
+     
+    Args:
+        conn: Active SQLite connection
+    """
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fact_kobo_sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sale_date DATE NOT NULL,
+            source_platform TEXT NOT NULL DEFAULT 'kobo_store',
+            book_identifier TEXT,
+            canonical_work_slug TEXT,
+            series TEXT,
+            edition_format TEXT,
+            country TEXT,
+            state TEXT,
+            zip_code TEXT,
+            content_type TEXT,
+            imprint TEXT,
+            title TEXT,
+            quantity INTEGER DEFAULT 0,
+            refund_reason TEXT,
+            deal_id TEXT,
+            list_price REAL,
+            tax_excluded_list_price REAL,
+            cogs_percentage REAL,
+            cogs_amount_lp REAL,
+            lp_currency TEXT,
+            fx_rate REAL,
+            cogs_payable REAL,
+            cogs_based_lp REAL,
+            cogs_based_lp_excl_tax REAL,
+            cogs_based_lp_currency TEXT,
+            cogs_adjustment REAL,
+            currency TEXT DEFAULT 'USD',
+            royalty_amount REAL,
+            royalty_amount_usd REAL,
+            total_tax REAL,
+            FOREIGN KEY (book_identifier) REFERENCES dim_books(book_identifier),
+            FOREIGN KEY (canonical_work_slug) REFERENCES dim_books(canonical_work_slug)
+        )
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_kobo_date ON fact_kobo_sales(sale_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_kobo_isbn ON fact_kobo_sales(book_identifier)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_kobo_country ON fact_kobo_sales(country)")
+
+    conn.commit()
+    print("[INFO] Kobo Store sales table initialized")
+
+
+def init_kobo_plus_table(conn: sqlite3.Connection) -> None:
+    """
+    Create the Kobo Plus subscription reads fact table.
+     
+    Args:
+        conn: Active SQLite connection
+    """
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fact_kobo_plus_reads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sale_date DATE NOT NULL,
+            source_platform TEXT NOT NULL DEFAULT 'kobo_plus',
+            book_identifier TEXT,
+            canonical_work_slug TEXT,
+            series TEXT,
+            edition_format TEXT,
+            region TEXT,
+            content_type TEXT,
+            title TEXT,
+            list_price_tax_in REAL,
+            list_price_tax_out REAL,
+            list_price_currency TEXT,
+            read_threshold_pct REAL,
+            quantity INTEGER DEFAULT 0,
+            total_payable_raw REAL,
+            fx_rate REAL,
+            total_payable_converted REAL,
+            currency TEXT DEFAULT 'USD',
+            value_per_minute REAL,
+            total_minutes REAL,
+            revenue_per_title REAL,
+            royalty_rate REAL,
+            royalty_amount REAL,
+            royalty_amount_usd REAL,
+            total_tax REAL,
+            FOREIGN KEY (book_identifier) REFERENCES dim_books(book_identifier),
+            FOREIGN KEY (canonical_work_slug) REFERENCES dim_books(canonical_work_slug)
+        )
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_kobo_plus_date ON fact_kobo_plus_reads(sale_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_kobo_plus_isbn ON fact_kobo_plus_reads(book_identifier)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_kobo_plus_region ON fact_kobo_plus_reads(region)")
+
+    conn.commit()
+    print("[INFO] Kobo Plus reads table initialized")
+
+
+def init_ingram_table(conn: sqlite3.Connection) -> None:
+    """
+    Create the IngramSpark sales fact table.
+     
+    Args:
+        conn: Active SQLite connection
+    """
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fact_ingram_sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sale_date DATE NOT NULL,
+            source_platform TEXT NOT NULL DEFAULT 'ingram_spark',
+            book_identifier TEXT,
+            canonical_work_slug TEXT,
+            series TEXT,
+            edition_format TEXT,
+            country TEXT,
+            title TEXT,
+            publisher_imprint TEXT,
+            binding_type_raw TEXT,
+            book_type_id TEXT,
+            page_count INTEGER,
+            sales_category TEXT,
+            returns_flag TEXT,
+            title_status_flag TEXT,
+            parent_isbn TEXT,
+            list_price REAL,
+            wholesale_discount_pct REAL,
+            quantity INTEGER DEFAULT 0,
+            mtd_avg_list_price REAL,
+            mtd_extended_list REAL,
+            mtd_avg_discount_pct REAL,
+            mtd_extended_discount REAL,
+            mtd_avg_wholesale_price REAL,
+            mtd_extended_wholesale REAL,
+            mtd_avg_print_charge REAL,
+            mtd_extended_print_charge REAL,
+            mtd_gross_pub_comp REAL,
+            mtd_extended_adjustments REAL,
+            mtd_extended_recovery REAL,
+            royalty_amount REAL,
+            royalty_amount_usd REAL,
+            mtd_return_quantity REAL,
+            mtd_return_wholesale REAL,
+            mtd_return_charge REAL,
+            mtd_return_total REAL,
+            mtd_net_wholesale REAL,
+            mtd_net_pub_comp REAL,
+            mtd_wholesale_tax REAL,
+            mtd_print_charge_tax REAL,
+            mtd_return_wholesale_tax REAL,
+            mtd_return_charge_tax REAL,
+            mtd_global_distribution_fee REAL,
+            mtd_global_distribution_fee_tax REAL,
+            currency TEXT DEFAULT 'USD',
+            FOREIGN KEY (book_identifier) REFERENCES dim_books(book_identifier),
+            FOREIGN KEY (canonical_work_slug) REFERENCES dim_books(canonical_work_slug)
+        )
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ingram_date ON fact_ingram_sales(sale_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ingram_isbn ON fact_ingram_sales(book_identifier)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ingram_country ON fact_ingram_sales(country)")
+
+    conn.commit()
+    print("[INFO] IngramSpark sales table initialized")
+
+
+def ingest_dataframe(conn: sqlite3.Connection, df: pd.DataFrame, table_name: str = 'sales_fact') -> int:
     """
     Efficiently bulk-load pandas DataFrame into SQLite.
     
@@ -263,6 +550,9 @@ def ingest_dataframe(conn, df, table_name='sales_fact'):
         conn: Active SQLite connection
         df: Pandas DataFrame containing transaction data
         table_name: Target table (default: sales_fact)
+    
+    Returns:
+        Number of rows ingested, or 0 if DataFrame is empty
     """
     if df.empty:
         print("[WARN] Cannot ingest empty DataFrame")
@@ -273,7 +563,7 @@ def ingest_dataframe(conn, df, table_name='sales_fact'):
     return len(df)
 
 
-def get_monthly_summary_query(conn):
+def get_monthly_summary_query(conn: sqlite3.Connection) -> list:
     """
     Example analytical query: Monthly revenue aggregation by platform.
     
@@ -301,7 +591,7 @@ def get_monthly_summary_query(conn):
     return cursor.fetchall()
 
 
-def get_series_performance_query(conn):
+def get_series_performance_query(conn: sqlite3.Connection) -> list:
     """
     Example analytical query: Revenue breakdown by book series.
     
@@ -331,7 +621,7 @@ def get_series_performance_query(conn):
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
-def close_connection(conn):
+def close_connection(conn: sqlite3.Connection) -> None:
     """Safe database disconnection."""
     if conn:
         conn.close()

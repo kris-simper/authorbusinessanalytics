@@ -1,13 +1,26 @@
-"""Author Business Analytics Dashboard - Interactive Web Interface."""
+"""
+Author Business Analytics Dashboard — Interactive Web Interface.
 
-import streamlit as st
+Streamlit-powered analytics dashboard connecting to the SQLite data warehouse
+created by the ETL pipeline. Provides multi-platform revenue tracking, trend
+analysis, forecasting visualizations, and series performance rankings.
+
+Architecture:
+- Uses @st.cache_data decorator on database queries for automatic caching
+- Color palette centralized for consistent branding across all charts
+- Date filtering applied via standardized where clause builder
+- Lazy database connection initialization for improved startup speed
+"""
+
+import datetime
 import sqlite3
 from pathlib import Path
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 from plotly.subplots import make_subplots
-import datetime
 
 
 # ===================================================================
@@ -23,26 +36,48 @@ st.set_page_config(
 
 
 # ===================================================================
+# CENTRALIZED CONSTANTS
+# ===================================================================
+
+DATABASE_PATH = Path("data/author_analytics.db")
+
+COLOR_PALETTE = {
+    'ACX Audiobooks': '#6A4C93',
+    'Amazon KDP': '#2E86AB',
+    'KU Reads': '#F18F01',
+    'Patreon': '#A23B72',
+    'WooCommerce': '#3C5B6F',
+    'Audiobooks Unleashed': '#5F9EA0',
+    'Books': '#3C5B6F',
+    'Merchandise': '#F18F01',
+}
+
+PLATFORM_NAMES = [
+    'ACX', 'Amazon KDP', 'Patreon',
+    'WooCommerce', 'Audiobooks Unleashed',
+]
+
+
+# ===================================================================
 # HELPER FUNCTIONS
 # ===================================================================
 
-def get_db_connection():
+def get_db_connection() -> sqlite3.Connection | None:
     """Connect to the SQLite database. Caches connection for reuse."""
-    db_path = Path("data/author_analytics.db")
-    if not db_path.exists():
+    if not DATABASE_PATH.exists():
+        st.error(f"Database not found at {DATABASE_PATH}. Run the ETL pipeline first.")
         return None
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(DATABASE_PATH)
     return conn
 
 
 @st.cache_data(ttl=300)
-def query_database(sql_query, params=None):
+def query_database(sql_query: str, params=None) -> pd.DataFrame | None:
     """Execute SQL query with optional parameters and return DataFrame."""
     conn = get_db_connection()
     if not conn:
         return None
     try:
-        import pandas as pd
         df = pd.read_sql_query(sql_query, conn, params=params)
         conn.close()
         return df
@@ -51,14 +86,14 @@ def query_database(sql_query, params=None):
         return None
 
 
-def format_currency(value):
+def format_currency(value) -> str:
     """Format numbers as currency. Handles None/NaN safely."""
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return "$0.00"
     return f"${float(value):,.2f}"
 
 
-def format_number(value):
+def format_number(value) -> str:
     """Format large numbers with K/M suffixes. Handles None/NaN safely."""
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return "0"
@@ -71,14 +106,14 @@ def format_number(value):
         return str(int(value))
 
 
-def prettify_series(slug):
+def prettify_series(slug: str) -> str:
     """Convert slug format to Title Case (e.g., 'fallen_gods' → 'Fallen Gods')."""
     if not slug or slug == '(Unmatched)':
         return slug
     return slug.replace('_', ' ').title()
    
    
-def date_where_clause(column_name="sale_date", use_filter=False, date_range=None):
+def date_where_clause(column_name: str = "sale_date", use_filter: bool = False, date_range=None) -> str:
     """Build a SQL WHERE clause fragment for date filtering."""
     if not use_filter or date_range is None or len(date_range) < 2:
         return ""
@@ -104,30 +139,27 @@ with st.sidebar:
     # Date range filter (applies to all pages)
     # Date range filter (applies to all pages)
     st.header("Date Filter")
-    from datetime import date
     date_range = st.date_input(
         "Date Range",
-        value=(date(2018, 1, 1), date(2026, 12, 31)),
+        value=(datetime.date(2018, 1, 1), datetime.date(2026, 12, 31)),
     )
     
     use_filter = st.checkbox("Apply date filter to queries", value=False)
     
     # Build SQL WHERE clause from selected dates
     if len(date_range) == 2:
-        start_date = date_range[0].strftime('%Y-%m-%d')
-        end_date = date_range[1].strftime('%Y-%m-%d')
-        date_filter_sql = f"AND sale_date BETWEEN '{start_date}' AND '{end_date}'"
+        date_filter_sql = date_where_clause('sale_date', use_filter, date_range)
     else:
-        date_filter_sql = ""  # Single date clicked, don't filter
+        date_filter_sql = ""
     
     st.divider()
     
     # Platform filter
     st.header("Platform Filter")
-    platforms = st.multiselect(
+    hide_platforms = st.multiselect(
         "Hide these platforms:",
-        ["ACX", "Amazon KDP", "Patreon", "WooCommerce", "Audiobooks Unleashed"],
-        default=[]
+        PLATFORM_NAMES,
+        default=[],
     )
 
 
@@ -136,7 +168,7 @@ with st.sidebar:
 # ===================================================================
 
 st.markdown("# 📈 Author Revenue Dashboard")
-st.caption("Interactive analytics across 5 distribution platforms (11,686 records)")
+st.caption("Interactive analytics across 6 distribution platforms (11,686 records)")
 
 
 # ===================================================================
@@ -187,7 +219,7 @@ if selected_page == "Home Overview":
             
             UNION ALL
             
-            SELECT 'AU Books Wide' AS source_platform,
+            SELECT 'Audiobooks Unleashed' AS source_platform,
                    ROUND(SUM(royalty_amount_usd), 2) AS total_revenue,
                    COUNT(*) AS record_count
             FROM fact_aubooks_sales
@@ -301,11 +333,11 @@ if selected_page == "Home Overview":
     
     with col1:
         st.metric("Total Revenue (All Platforms)", format_currency(total_revenue))
-        st.caption("Across 5 platforms")
+        st.caption("Across 6 platforms")
     
     with col2:
         st.metric("Records Analyzed", format_number(int(total_records)))
-        st.caption("5 fact tables")
+        st.caption("6 fact tables")
     
     with col3:
         st.metric("Active Period", active_period)
@@ -369,7 +401,7 @@ if selected_page == "Home Overview":
             ),
             au_wide AS (
                 SELECT strftime('%Y-%m', sale_date) AS period,
-                       'AU Books Wide' AS channel,
+                       'Audiobooks Unleashed' AS channel,
                        ROUND(SUM(royalty_amount_usd), 2) AS revenue,
                        SUM(quantity) AS units
                 FROM fact_aubooks_sales
@@ -390,15 +422,8 @@ if selected_page == "Home Overview":
             fig = px.bar(
                 df_monthly,
                 x='period', y='revenue', color='channel',
-                color_discrete_map={
-                    'ACX Audiobooks': '#6A4C93',
-                    'Amazon KDP': '#2E86AB',
-                    'KU Reads': '#F18F01',
-                    'Patreon': '#A23B72',
-                    'WooCommerce': '#3C5B6F',
-                    'AU Books Wide': '#5F9EA0'
-                },
-                title='Monthly Revenue Across All 5 Distribution Channels',
+                color_discrete_map=COLOR_PALETTE,
+                title='Monthly Revenue Across All 6 Distribution Channels',
                 labels={'revenue': 'Revenue ($)', 'period': 'Month'},
                 template='plotly_white'
             )
@@ -416,14 +441,7 @@ if selected_page == "Home Overview":
                 x='period',
                 y='share_pct',
                 color='channel',
-                color_discrete_map={
-                    'ACX Audiobooks': '#6A4C93',
-                    'Amazon KDP': '#2E86AB',
-                    'KU Reads': '#F18F01',
-                    'Patreon': '#A23B72',
-                    'WooCommerce': '#3C5B6F',
-                    'AU Books Wide': '#5F9EA0'
-                },
+                color_discrete_map=COLOR_PALETTE,
                 labels={'share_pct': 'Share (%)', 'period': 'Month', 'channel': 'Channel'},
                 title='',
             )
@@ -468,7 +486,7 @@ if selected_page == "Home Overview":
                 
                 UNION ALL
                 
-                SELECT 'AU Books Wide' AS platform, ROUND(SUM(royalty_amount_usd), 2) AS rev
+                SELECT 'Audiobooks Unleashed' AS platform, ROUND(SUM(royalty_amount_usd), 2) AS rev
                 FROM fact_aubooks_sales
             )
             SELECT platform, rev FROM platform_revenues WHERE rev > 0
@@ -481,7 +499,7 @@ if selected_page == "Home Overview":
                 df_pie,
                 values='rev', names='platform',
                 title='Revenue Share Across 6 Distribution Channels (%)',
-                color_discrete_sequence=['#6A4C93', '#2E86AB', '#F18F01', '#A23B72', '#3C5B6F', '#5F9EA0']
+                color_discrete_sequence=[COLOR_PALETTE[k] for k in ['ACX Audiobooks', 'Amazon KDP', 'KU Reads', 'Patreon', 'WooCommerce', 'Audiobooks Unleashed']]
             )
             st.plotly_chart(fig, width='stretch')
 
@@ -529,7 +547,7 @@ if selected_page == "Home Overview":
             ),
             au_yearly AS (
                 SELECT strftime('%Y', sale_date) AS year,
-                       'AU Books Wide' AS channel,
+                       'Audiobooks Unleashed' AS channel,
                        ROUND(SUM(royalty_amount_usd), 2) AS revenue
                 FROM fact_aubooks_sales
                 WHERE 1=1 {date_filter_sql}
@@ -580,14 +598,7 @@ if selected_page == "Home Overview":
                 title='Year-over-Year Revenue by Platform',
                 labels={'revenue': 'Revenue ($)', 'year': 'Year', 'channel': 'Platform'},
                 template='plotly_white',
-                color_discrete_map={
-                    'ACX Audiobooks': '#6A4C93',
-                    'Amazon KDP': '#2E86AB',
-                    'KU Reads': '#F18F01',
-                    'Patreon': '#A23B72',
-                    'WooCommerce': '#3C5B6F',
-                    'AU Books Wide': '#5F9EA0'
-                }
+                color_discrete_map=COLOR_PALETTE,
             )
             st.plotly_chart(fig, width='stretch')
             
@@ -656,7 +667,7 @@ if selected_page == "Home Overview":
                 UNION ALL
                 
                 SELECT strftime('%Y-%m', sale_date) AS period,
-                       'AU Books Wide' AS channel,
+                       'Audiobooks Unleashed' AS channel,
                        ROUND(SUM(royalty_amount_usd), 2) AS revenue
                 FROM fact_aubooks_sales
                 WHERE 1=1 {date_filter_sql}
@@ -691,14 +702,7 @@ if selected_page == "Home Overview":
                 x='period',
                 y='cumulative_revenue',
                 color='channel',
-                color_discrete_map={
-                    'ACX Audiobooks': '#6A4C93',
-                    'Amazon KDP': '#2E86AB',
-                    'KU Reads': '#F18F01',
-                    'Patreon': '#A23B72',
-                    'WooCommerce': '#3C5B6F',
-                    'AU Books Wide': '#5F9EA0'
-                },
+                color_discrete_map=COLOR_PALETTE,
                 markers=True,
                 title='Cumulative Revenue Accumulation by Platform',
                 labels={'cumulative_revenue': 'Cumulative Revenue (USD)', 'period': 'Month'},
@@ -752,7 +756,7 @@ elif selected_page == "Platform Breakdown":
                 SUM(royalty_amount_usd) AS royalty_sum,
                 AVG(royalty_amount_usd) AS avg_transaction
             FROM sales_fact 
-            WHERE source_platform LIKE '%acx%' {date_where_clause('sale_date', use_filter, date_range)}
+            WHERE source_platform LIKE '%acx%' {date_filter_sql}
         """
         kdp_query = f"""
             SELECT 
@@ -760,7 +764,7 @@ elif selected_page == "Platform Breakdown":
                 SUM(royalty_amount_usd) AS royalty_sum,
                 AVG(royalty_amount_usd) AS avg_transaction
             FROM sales_fact 
-            WHERE source_platform NOT LIKE '%acx%' {date_where_clause('sale_date', use_filter, date_range)}
+            WHERE source_platform LIKE '%acx%' {date_filter_sql}
         """
         woo_query = f"""
             SELECT 
@@ -768,14 +772,14 @@ elif selected_page == "Platform Breakdown":
                 SUM(net_sales) AS revenue_sum,
                 AVG(net_sales) AS avg_order
             FROM fact_woo_sales
-            WHERE 1=1 {date_where_clause('sale_date', use_filter, date_range)}
+            WHERE 1=1 {date_filter_sql}
         """
         patreon_query = f"""
             SELECT 
                 COUNT(*) AS months_recorded,
                 SUM(net_earnings) AS total_net
             FROM fact_patreon_earnings
-            WHERE 1=1 {date_where_clause('sale_date', use_filter, date_range)}
+            WHERE 1=1 {date_filter_sql}
         """
         au_books_query = f"""
             SELECT 
@@ -784,7 +788,7 @@ elif selected_page == "Platform Breakdown":
                 AVG(royalty_amount_usd) AS avg_transaction,
                 COUNT(DISTINCT distributor) AS distributors
             FROM fact_aubooks_sales
-            WHERE 1=1 {date_where_clause('sale_date', use_filter, date_range)}
+            WHERE 1=1 {date_filter_sql}
         """
         
         df_acx = query_database(acx_query)
@@ -811,7 +815,7 @@ elif selected_page == "Platform Breakdown":
                 st.metric("Avg per Transaction", format_currency(df_kdp['avg_transaction'].iloc[0]))
 
         with col3:
-            st.subheader("🎧 AU Books Wide")
+            st.subheader("🎧 Audiobooks Unleashed")
             if df_aubooks is not None:
                 st.metric("Line Items", format_number(df_aubooks['record_count'].iloc[0]))
                 st.metric("Total Royalty", format_currency(df_aubooks['royalty_sum'].iloc[0]))
@@ -846,7 +850,7 @@ elif selected_page == "Platform Breakdown":
                 COUNT(*) AS transaction_count,
                 ROUND(AVG(royalty_amount_usd), 2) AS avg_transaction_value
             FROM fact_aubooks_sales
-            WHERE 1=1 {date_where_clause('sale_date', use_filter, date_range)}
+            WHERE 1=1 {date_filter_sql}
             GROUP BY COALESCE(distributor, 'Unknown')
             ORDER BY total_revenue DESC
         """
@@ -869,7 +873,7 @@ elif selected_page == "Platform Breakdown":
                 x='total_revenue',
                 y='distributor',
                 orientation='h',
-                color_discrete_sequence=['#5F9EA0'],
+                color_discrete_sequence=[COLOR_PALETTE['Audiobooks Unleashed']],
                 hover_data={
                     'total_revenue': ':$,.2f',
                     'total_units': True,
@@ -900,7 +904,7 @@ elif selected_page == "Platform Breakdown":
                     x='total_units',
                     y='distributor',
                     orientation='h',
-                    color_discrete_sequence=['#5F9EA0'],
+                    color_discrete_sequence=[COLOR_PALETTE['Audiobooks Unleashed']],
                     hover_data={'total_units': True, 'transaction_count': True},
                     labels={'total_units': 'Units Sold', 'distributor': 'Distributor'},
                 )
@@ -919,7 +923,7 @@ elif selected_page == "Platform Breakdown":
                     x='avg_transaction_value',
                     y='distributor',
                     orientation='h',
-                    color_discrete_sequence=['#5F9EA0'],
+                    color_discrete_sequence=[COLOR_PALETTE['Audiobooks Unleashed']],
                     hover_data={'avg_transaction_value': ':$,.2f', 'transaction_count': True},
                     labels={'avg_transaction_value': 'Avg Transaction (USD)', 'distributor': 'Distributor'},
                 )
@@ -950,7 +954,7 @@ elif selected_page == "Platform Breakdown":
             st.warning("No AU Books data found for the selected period.")
 
     # ============================================================
-    # TAB 3: WOOCOMMERCE BOOKS VS MERCH (NEW!)
+    # TAB 3: WOOCOMMERCE BOOKS VS MERCH
     # ============================================================
     with tab_woo:
         st.subheader("🛍️ Books vs. Merchandise")
@@ -966,7 +970,7 @@ elif selected_page == "Platform Breakdown":
                 SUM(items_sold) AS units,
                 ROUND(SUM(net_sales), 2) AS revenue
             FROM fact_woo_sales
-            WHERE 1=1 {date_where_clause('sale_date', use_filter, date_range)}
+            WHERE 1=1 {date_filter_sql}
             GROUP BY period, category
             ORDER BY period ASC
         """
@@ -995,10 +999,7 @@ elif selected_page == "Platform Breakdown":
                 x='period',
                 y='revenue',
                 color='category',
-                color_discrete_map={
-                    'Books': '#3C5B6F',
-                    'Merchandise': '#F18F01'
-                },
+                color_discrete_map=COLOR_PALETTE,
                 labels={'revenue': 'Revenue (USD)', 'period': 'Month', 'category': 'Category'},
                 title='',
             )
@@ -1262,7 +1263,7 @@ elif selected_page == "KENP Analysis":
             ROUND(SUM(equivalent_copies), 2) AS equiv_copies
         FROM kenp_reads
         WHERE royalty_amount_usd IS NOT NULL AND royalty_amount_usd > 0
-            {date_where_clause('sale_date', use_filter, date_range)}
+            {date_filter_sql}
         GROUP BY strftime('%Y-%m', sale_date)
         ORDER BY period DESC
     """
@@ -1326,7 +1327,7 @@ elif selected_page == "Series Performance":
             ROUND(AVG(royalty_rate * 100), 1) AS avg_royalty_pct
         FROM sales_fact
         WHERE (series IS NOT NULL OR source_platform = 'woocommerce')
-            {date_where_clause('sale_date', use_filter, date_range)}
+            {date_filter_sql}
         GROUP BY COALESCE(series, '(Unmatched)')
         HAVING total_revenue > 0
         ORDER BY total_revenue DESC
@@ -1683,7 +1684,7 @@ elif selected_page == "Forecasting":
                 
                 UNION ALL
                 
-                SELECT strftime('%Y-%m', sale_date), 'AU Books',
+                SELECT strftime('%Y-%m', sale_date), 'Audiobooks Unleashed',
                        ROUND(SUM(royalty_amount_usd), 2)
                 FROM fact_aubooks_sales WHERE 1=1 {date_filter_sql} GROUP BY 1
             ),
@@ -1859,8 +1860,7 @@ elif selected_page == "Forecasting":
 # ===================================================================
 
 st.divider()
-import datetime
-refresh_ts = datetime.datetime.fromtimestamp(Path('data/author_analytics.db').stat().st_mtime)
+refresh_ts = datetime.datetime.fromtimestamp(DATABASE_PATH.stat().st_mtime)
 st.caption(
     "🔧 Powered by Author Business Analytics pipeline. "
     f"Database last refreshed on: {refresh_ts.strftime('%Y-%m-%d %H:%M')} | "

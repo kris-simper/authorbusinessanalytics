@@ -1,9 +1,19 @@
+# Core Data Processing
 pandas>=2.0.0
 numpy>=1.24.0
-openpyxl>=3.0.0
-xlrd>=2.0.0
-sqlalchemy>=2.0.0
+
+# File Format Handlers
+openpyxl>=3.0.0      # Excel .xlsx (ACX new, KDP)
+xlrd>=2.0.0          # Legacy Excel .xls (ACX old)
+pdfplumber>=0.9.0    # PDF extraction (AU Books)
+html5lib==1.1
+
+# Database
+# sqlite3 is stdlib — no extra package needed
+
+# Visualization & Dashboard
 plotly>=5.15.0
 streamlit>=1.28.0
-pdfplumber>=0.9.0
-currencyconverter>=0.17.0
+
+# External APIs
+currencyconverter>=0.17.0   # ECB historical exchange rates

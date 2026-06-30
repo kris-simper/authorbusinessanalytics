@@ -433,9 +433,9 @@ concentration AS (
         period,
         MAX(platform_share_pct) AS top_platform_share_pct,
         COUNT(DISTINCT platform) AS active_platforms,
-        SUM(total_revenue) AS total_revenue
+        MAX(total_revenue) AS total_revenue
     FROM shares
-    GROUP BY period, total_revenue
+    GROUP BY period
 ),
 ranked AS (
     SELECT 
@@ -455,8 +455,8 @@ SELECT
     period,
     top_platform_share_pct || '%' AS "Top Platform Share",
     active_platforms AS "Active Platforms",
-    diversity_risk.level,
-    total_revenue,
-    risk_level
+    diversification_score || '%' AS "Diversification Score",
+    total_revenue AS "Total Revenue",
+    risk_level AS "Risk Level"
 FROM ranked
 ORDER BY period DESC;

@@ -1,22 +1,38 @@
 """
 KENP (Kindle Edition Normalized Pages) loader for Amazon KDP.
 
-Derives per-page royalty rates via backward calculation:
-    1. KENP royalty (currency, month) = Summary total - Combined Sales total
+Derives per-page royalty rates via backward calculation from KDP summary data:
+    1. KENP royalty (native currency) = Summary.Royalty - CombinedSales.Royalty
     2. Effective rate = KENP royalty / total pages read
-    3. Per-book royalty = page_count × effective rate
-    
-Converts native-currency royalties to USD using historical ECB reference rates.
-Calculates equivalent copies sold via KU for apples-to-apples comparison vs direct sales.
+    3. Per-book royalty = page_count × rate_per_page
+
+Each row represents one book-marketplace-date page-read aggregation (daily granularity).
+Uses ASIN as primary identifier for catalog enrichment. Converts native-currency
+royalties to USD using historical ECB reference rates (to_usd()).
+
+Quirks handled:
+- Three-tab Excel workbook (KENP, Summary, Combined Sales)
+- Mixed date formats (ISO dates, "Month YYYY", "YYYY-MM")
+- Marketplace-to-currency mapping across 13 regions
+- Fallback title-matching for unmatched ASINs
+
+Grain: One row per book-marketplace-date page-read record.
+Kimball compliance: Separate fact table due to different measurement grain
+(page reads vs sales transactions) and distinct analytical metrics.
 """
 
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
+
 from src.schemas import KDP_MARKETPLACE_MAP
 from src.currency import to_usd
 
 
-# Map marketplaces to the currency used in the Summary tab
+# ===================================================================
+# CURRENCY AND MARKETPLACE MAPPING CONSTANTS
+# ===================================================================
+
 MARKETPLACE_CURRENCY_MAP = {
     "Amazon.com": "USD",
     "Amazon.co.uk": "GBP",
@@ -35,7 +51,6 @@ MARKETPLACE_CURRENCY_MAP = {
     "Amazon.se": "SEK",
 }
 
-# Summary tab column → ISO currency code mapping
 SUMMARY_CURRENCY_COLS = {
     "Royalty (USD)": "USD",
     "Royalty (GBP)": "GBP",
@@ -51,23 +66,34 @@ SUMMARY_CURRENCY_COLS = {
 }
 
 
-def load_kenp_data(filepath, catalog=None):
+# ===================================================================
+# MAIN LOADER FUNCTION
+# ===================================================================
+
+def load_kenp_data(filepath: str | Path, catalog=None) -> pd.DataFrame:
     """
     Load KENP page reads and derive royalties via backward calculation.
 
+    Parses KDP's three-tab Excel workbook structure to calculate implied
+    per-page royalty rates, then allocates those rates to individual book-
+    day page read records. Falls back to title-matching for ASIN lookups
+    that fail initial catalog resolution.
+
     Args:
-        filepath: Path to the KDP .xlsx file
-        catalog: BookCatalog instance for enrichment
+        filepath: Path to the KDP .xlsx file containing KENP tab, Summary tab,
+                  and Combined Sales tab
+        catalog: BookCatalog instance for ASIN-based hybrid enrichment
 
     Returns:
-        DataFrame with KENP reads, derived royalties, and equivalent copies
+        DataFrame with KENP reads, derived royalties, equivalent copies,
+        and catalog metadata. Column mapping aligns with kenp_reads schema.
     """
     filepath = Path(filepath)
     print(f"[INFO] Loading KENP data from {filepath.name}")
 
-    # =======================================================================
+    # ==========================================================================
     # STEP 1: Load all three tabs from the KDP workbook
-    # =======================================================================
+    # ==========================================================================
 
     df_kenp = pd.read_excel(filepath, sheet_name="KENP", engine="openpyxl")
     print(f"[INFO] KENP tab: {len(df_kenp)} page-read records")
@@ -78,9 +104,9 @@ def load_kenp_data(filepath, catalog=None):
     df_cs = pd.read_excel(filepath, sheet_name="Combined Sales", engine="openpyxl")
     print(f"[INFO] Combined Sales tab: {len(df_cs)} transaction rows")
 
-    # =======================================================================
+    # ==========================================================================
     # STEP 2: Normalize dates and currencies
-    # =======================================================================
+    # ==========================================================================
 
     # KENP tab uses ISO dates (YYYY-MM-DD)
     df_kenp["sale_date"] = pd.to_datetime(df_kenp["Date"])
@@ -100,14 +126,13 @@ def load_kenp_data(filepath, catalog=None):
     # Map marketplace → region code (reuse existing schema)
     df_kenp["region"] = df_kenp["Marketplace"].map(KDP_MARKETPLACE_MAP)
 
-    # =======================================================================
+    # ==========================================================================
     # STEP 3: Calculate KENP royalty residual per month + currency
-    # =======================================================================
+    # ==========================================================================
     # Formula: residual = Summary.Royalty(currency, month) - CombinedSales.sum(currency, month)
 
     cs_by_month_currency = df_cs.groupby(["sale_date", "Currency"])["Royalty"].sum()
 
-    # Build a residual lookup: (sale_date, currency) → residual_royalty
     residuals = []
 
     for _, summary_row in df_summary.iterrows():
@@ -116,13 +141,12 @@ def load_kenp_data(filepath, catalog=None):
         for col, currency in SUMMARY_CURRENCY_COLS.items():
             summary_total = summary_row[col]
             if pd.isna(summary_total) or summary_total == 0:
-                # Check CS side — if CS has sales but Summary shows zero, this indicates data issue
                 cs_val = cs_by_month_currency.get((month, currency), 0)
                 if cs_val > 0:
                     residuals.append({
                         "sale_date": month,
                         "currency": currency,
-                        "residual_royalty": -cs_val,  # negative = data inconsistency
+                        "residual_royalty": -cs_val,
                     })
                 continue
 
@@ -137,15 +161,13 @@ def load_kenp_data(filepath, catalog=None):
     df_residuals = pd.DataFrame(residuals)
     print(f"[INFO] Calculated {len(df_residuals)} month/currency residuals")
 
-    # =======================================================================
+    # ==========================================================================
     # STEP 4: Calculate effective per-page rate per month + currency
-    # =======================================================================
-    # Formula: effective_rate = residual_royalty / total_pages_read
+    # ==========================================================================
+    # Formula: rate_per_page = residual_royalty / total_pages_read
 
-    # Sum KENP pages by month + currency
     pages_by_month_currency = df_kenp.groupby(["sale_date", "currency"])["KENP"].sum()
 
-    # Merge residuals with page counts
     df_rates = df_residuals.merge(
         pages_by_month_currency.reset_index(),
         on=["sale_date", "currency"],
@@ -153,16 +175,15 @@ def load_kenp_data(filepath, catalog=None):
     )
     df_rates = df_rates.rename(columns={"KENP": "total_pages"})
 
-    # Calculate effective rate (handle division by zero gracefully)
-    df_rates["effective_rate"] = df_rates.apply(
+    # Handle division by zero gracefully
+    df_rates["rate_per_page"] = df_rates.apply(
         lambda r: r["residual_royalty"] / r["total_pages"]
         if r["total_pages"] and r["total_pages"] > 0
         else None,
         axis=1,
     )
 
-    # Drop rows with no pages (nothing to allocate)
-    df_rates = df_rates.dropna(subset=["effective_rate"])
+    df_rates = df_rates.dropna(subset=["rate_per_page"])
 
     print(f"[INFO] Derived {len(df_rates)} effective rates "
           f"({df_rates['currency'].nunique()} currencies)")
@@ -170,33 +191,34 @@ def load_kenp_data(filepath, catalog=None):
     # Log sample rates for transparency
     print("[INFO] Sample effective rates (USD):")
     usd_rates = df_rates[df_rates["currency"] == "USD"].tail(5)
-    for _, r in usd_rates.iterrows():
-        print(f"  {r['sale_date'].strftime('%Y-%m')}: "
-              f"${r['effective_rate']:.6f}/page "
-              f"({r['total_pages']:,.0f} pages → ${r['residual_royalty']:.2f})")
+    if not usd_rates.empty:
+        for _, r in usd_rates.iterrows():
+            print(f"  {r['sale_date'].strftime('%Y-%m')}: "
+                  f"${r['rate_per_page']:.6f}/page "
+                  f"({r['total_pages']:,.0f} pages → ${r['residual_royalty']:.2f})")
 
-    # =======================================================================
+    # ==========================================================================
     # STEP 5: Allocate royalty to individual KENP rows
-    # =======================================================================
+    # ==========================================================================
 
-    # Merge effective rates onto the per-book KENP data
+    # Merge rate_per_page onto per-book KENP data
     df_kenp = df_kenp.merge(
-        df_rates[["sale_date", "currency", "effective_rate"]],
+        df_rates[["sale_date", "currency", "rate_per_page"]],
         on=["sale_date", "currency"],
         how="left",
     )
 
-    # Calculate royalty in native currency
+    # Calculate royalty in native currency using the per-page rate
     df_kenp["royalty_amount"] = (
-        df_kenp["KENP"] * df_kenp["effective_rate"]
+        df_kenp["KENP"] * df_kenp["rate_per_page"]
     ).round(2)
 
     # Rename KENP column to page_count for clarity
     df_kenp = df_kenp.rename(columns={"KENP": "page_count"})
 
-    # =======================================================================
+    # ==========================================================================
     # STEP 6: Convert to USD using existing currency infrastructure
-    # =======================================================================
+    # ==========================================================================
 
     print("[INFO] Converting KENP royalties to USD...")
     df_kenp["royalty_amount_usd"] = df_kenp.apply(
@@ -207,53 +229,57 @@ def load_kenp_data(filepath, catalog=None):
     converted = df_kenp["royalty_amount_usd"].notna().sum()
     print(f"[INFO] {converted}/{len(df_kenp)} KENP records converted to USD")
 
-    # =======================================================================
+    # ==========================================================================
     # STEP 7: Catalog enrichment (series, work slug, format, KENP page count)
-    # =======================================================================
+    # ==========================================================================
 
     if catalog is not None:
         print("[INFO] Enriching KENP reads with catalog metadata...")
         df_kenp = df_kenp.rename(columns={"eBook ASIN": "book_identifier"})
 
-        # Run the same hybrid enrichment as the sales loaders
-        df_enriched = catalog.enrich(df_kenp, "book_identifier")
+        # Run standard enrichment via ASIN
+        df_kenp = catalog.enrich(df_kenp, "book_identifier")
 
         # Stage 2 fallback for any unmatched (rare edge cases)
-        unmatched_mask = df_enriched["series"].isna()
+        unmatched_mask = df_kenp["series"].isna()
         if unmatched_mask.any():
-            from src.loaders import _match_titles_to_catalog
-            unmatched_rows = df_enriched[unmatched_mask].copy()
+            from src.matching import _match_titles_to_catalog
+
+            unmatched_rows = df_kenp[unmatched_mask].copy()
+
+            # Drop enrichment columns so title matching can recreate them fresh
             for col in ["series", "canonical_work_slug", "edition_format"]:
                 if col in unmatched_rows.columns:
                     unmatched_rows = unmatched_rows.drop(columns=[col])
-            title_matched = _match_titles_to_catalog(unmatched_rows, catalog)
-            matched_rows = df_enriched[~unmatched_mask]
-            df_enriched = pd.concat([matched_rows, title_matched], ignore_index=True)
 
-        df_kenp = df_enriched
+            title_matched = _match_titles_to_catalog(unmatched_rows, catalog)
+            matched_rows = df_kenp[~unmatched_mask]
+            df_kenp = pd.concat([matched_rows, title_matched], ignore_index=True)
+
         matched = df_kenp["series"].notna().sum()
         print(f"[INFO] Catalog enrichment: {matched}/{len(df_kenp)} rows matched")
     else:
         df_kenp["series"] = None
         df_kenp["canonical_work_slug"] = None
-        df_kenp["edition_format"] = None
+        # Do NOT set edition_format to None here — defaults to 'ebook' in Step 8
 
-    # =======================================================================
-    # STEP 8: Calculate equivalent copies and finalize output
-    # =======================================================================
+    # ==========================================================================
+    # STEP 8: Finalize output columns and handle defaults
+    # ==========================================================================
 
     df_kenp["source_platform"] = "amazon_kdp_ku"
-    df_kenp["edition_format"] = df_kenp["edition_format"].fillna("ebook")
+    df_kenp["edition_format"] = df_kenp.get("edition_format", pd.Series(dtype=str)).fillna("ebook")
 
-    # Handle KENP page count: default to 1 to avoid division by zero
-    df_kenp["kenp_page_count"] = df_kenp["kenp_page_count"].fillna(1).astype(int)
-    
+    # Ensure KENP page count exists (may come from catalog or original data)
+    # Default to 1 to avoid division by zero when calculating equivalent_copies
+    df_kenp["kenp_page_count"] = df_kenp.get("kenp_page_count", pd.Series(dtype=float)).fillna(1).astype(int)
+
     # Calculate approximate copies read (pages / book's KENP page count)
     df_kenp["equivalent_copies"] = (
         df_kenp["page_count"] / df_kenp["kenp_page_count"]
     ).round(2)
 
-    # Select and rename columns to match kenp_reads schema
+    # Select final columns matching kenp_reads schema
     final_columns = [
         "sale_date",
         "source_platform",
@@ -275,4 +301,11 @@ def load_kenp_data(filepath, catalog=None):
     df_result = df_kenp[[c for c in final_columns if c in df_kenp.columns]].copy()
 
     print(f"[INFO] KENP load complete: {len(df_result)} normalized records")
+
+    if not df_result.empty:
+        print(f"[INFO] Date range: {df_result['sale_date'].min()} to {df_result['sale_date'].max()}")
+        print(f"[INFO] Unique currencies: {df_result['currency'].nunique()}")
+        total_royalty = df_result['royalty_amount_usd'].sum()
+        print(f"[INFO] Total royalty (USD): ${total_royalty:.2f}")
+
     return df_result
